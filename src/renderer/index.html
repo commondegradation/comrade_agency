@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self'; frame-src 'self' data: blob:" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Comrade Agency</title>
+  <link rel="stylesheet" href="css/fonts.css" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- ================= WELCOME / SETUP ================= -->
+    <section id="view-setup" class="view setup-view hidden"></section>
+
+    <!-- ================= MAIN ================= -->
+    <section id="view-main" class="view main-view hidden">
+      <header id="titlebar" class="titlebar">
+        <div class="traffic-spacer" id="traffic-spacer"></div>
+        <div class="brand" title="Comrade Agency">
+          <img class="brand-logo" src="assets/logo.png" alt="" />
+          <span class="brand-name">COMRADE <em>AGENCY</em></span>
+        </div>
+        <div class="titlebar-spacer"></div>
+        <nav class="top-nav">
+          <button class="btn ghost small" data-route="providers">Providers</button>
+          <button class="btn ghost small" data-route="connections">Connections</button>
+          <button class="btn ghost small" data-route="settings">Settings</button>
+        </nav>
+      </header>
+      <div class="main-body">
+        <aside id="sidebar" class="sidebar">
+          <div class="sidebar-top">
+            <button class="btn primary block" id="btn-new-agent"><span class="plus">+</span> New Agent</button>
+          </div>
+          <div class="search-wrap">
+            <input id="chat-search" class="search" type="search" placeholder="Search agents" autocomplete="off" spellcheck="false" />
+          </div>
+          <div id="chat-list" class="chat-list"></div>
+          <footer class="sidebar-foot">
+            <button class="btn ghost block" id="btn-sidebar-providers">Providers <span class="muted" id="providers-count"></span></button>
+            <button class="btn ghost block" id="btn-sidebar-connections">Connections <span class="muted" id="connections-count"></span></button>
+          </footer>
+        </aside>
+        <div class="resizer" id="sidebar-resizer"></div>
+        <main class="chat-pane">
+          <div id="chat-view" class="chat-view"></div>
+          <div id="chat-composer-host" class="composer-host"></div>
+        </main>
+        <aside id="artifact-pane" class="artifact-pane hidden">
+          <div class="artifact-head">
+            <div class="artifact-tabs">
+              <button class="tab active" data-artifact-tab="preview">Preview</button>
+              <button class="tab" data-artifact-tab="code">Source</button>
+            </div>
+            <div class="artifact-actions">
+              <button class="btn ghost small" id="artifact-save" title="Save file">Save</button>
+              <button class="btn ghost small icon" id="artifact-close" title="Close panel">✕</button>
+            </div>
+          </div>
+          <div id="artifact-meta" class="artifact-meta"></div>
+          <div id="artifact-body" class="artifact-body"></div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ================= MODAL ================= -->
+    <div id="modal-root" class="modal-root hidden"></div>
+    <!-- ================= TOASTS ================= -->
+    <div id="toast-root" class="toast-root"></div>
+    <!-- ================= APPROVAL ================= -->
+    <div id="approval-root" class="approval-root hidden"></div>
+  </div>
+
+  <script src="js/util.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/thoughts.js"></script>
+  <script src="js/artifacts.js"></script>
+  <script src="js/mcp-client.js"></script>
+  <script src="js/chat.js"></script>
+  <script src="js/views.js"></script>
+  <script src="js/views-pages.js"></script>
+  <script src="js/views-editors.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

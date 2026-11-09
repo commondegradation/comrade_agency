@@ -1,0 +1,117 @@
+{
+  "name": "comrade-agency",
+  "productName": "Comrade Agency",
+  "version": "1.0.0",
+  "description": "Comrade Agency — desktop chat app for AI agents with providers, MCP connections and single-file code artifacts.",
+  "main": "src/main/main.js",
+  "author": {
+    "name": "Comrade Agency",
+    "email": "hello@comrade.agency"
+  },
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "icons": "electron scripts/make-icons.js && node scripts/make-ico.js",
+    "dist:mac": "npm run icons && electron-builder --mac --arm64 --x64 --publish never",
+    "dist:win": "npm run icons && electron-builder --win --x64 --publish never",
+    "dist": "npm run dist:mac && npm run dist:win"
+  },
+  "devDependencies": {
+    "electron": "^29.4.6",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "agency.comrade.app",
+    "productName": "Comrade Agency",
+    "copyright": "Copyright © 2026 Comrade Agency",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "README.md",
+      "package.json"
+    ],
+    "asar": true,
+    "electronLanguages": [
+      "en-US",
+      "ru",
+      "uk"
+    ],
+    "mac": {
+      "category": "public.app-category.social-networking",
+      "icon": "build/icon.icns",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "darkModeSupport": true,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Comrade Agency does not record audio.",
+        "NSHumanReadableCopyright": "Copyright © 2026 Comrade Agency"
+      }
+    },
+    "dmg": {
+      "title": "Comrade Agency ${version}",
+      "icon": "build/icon.icns",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220,
+          "type": "file"
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Comrade Agency",
+      "artifactName": "Comrade-Agency-Setup-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Comrade-Agency-Portable-${version}-${arch}.${ext}"
+    }
+  }
+}
