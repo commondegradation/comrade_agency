@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Comrade Agency
 
 A desktop messenger for AI agents. Bring your own model providers, hand each agent a
@@ -103,6 +102,3 @@ scripts/             icon generators
 ## License
 
 MIT. Bundled fonts keep their own licences (see `assets/fonts/`).
-=======
-# comrade_agency
->>>>>>> a9a11f12fd57f66f4b637e1b0bc40dc48a750fe2
