@@ -39,7 +39,7 @@ function toolsForConnections(connections, agentConnectionIds) {
   const map = {};
   for (const conn of connections || []) {
     if (!conn.enabled) continue;
-    if (Array.isArray(agentConnectionIds) && agentConnectionIds.length && !agentConnectionIds.includes(conn.id)) continue;
+    if (!Array.isArray(agentConnectionIds) || !agentConnectionIds.includes(conn.id)) continue;
     const h = shortHash(conn.id);
     for (const tool of (conn.tools || []).slice(0, MAX_TOOLS)) {
       const exposed = `mcp_${safeName(tool.name)}_${h}`;

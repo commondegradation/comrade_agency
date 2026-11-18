@@ -52,15 +52,16 @@
       .toUpperCase();
 
   U.time = (ts) =>
-    new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    new Date(ts).toLocaleTimeString(window.S?.data.ui.locale === 'en' ? 'en-US' : 'ru-RU', { hour: '2-digit', minute: '2-digit' });
 
   U.relTime = (ts) => {
     const diff = (Date.now() - ts) / 1000;
-    if (diff < 60) return 'now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-    if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}d`;
-    return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const ru = window.S?.data.ui.locale !== 'en';
+    if (diff < 60) return ru ? 'сейчас' : 'now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}${ru ? ' мин' : 'm'}`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}${ru ? ' ч' : 'h'}`;
+    if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}${ru ? ' дн' : 'd'}`;
+    return new Date(ts).toLocaleDateString(window.S?.data.ui.locale === 'en' ? 'en-US' : 'ru-RU', { month: 'short', day: 'numeric' });
   };
 
   U.bytes = (n) => {

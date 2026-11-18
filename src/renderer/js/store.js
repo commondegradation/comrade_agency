@@ -16,6 +16,7 @@
     activeAgentId: null,
     activeChatId: null,
     ui: {
+      locale: 'ru',
       showThinking: true,
       autoOpenArtifact: true,
       artifactTab: 'preview',
@@ -76,7 +77,7 @@
   S.agentConnections = (agent) => {
     if (!agent) return [];
     const ids = agent.connectionIds || [];
-    return S.data.connections.filter((c) => c.enabled && (ids.length === 0 || ids.includes(c.id)));
+    return S.data.connections.filter((c) => c.enabled && ids.includes(c.id));
   };
 
   S.toolsForAgent = (agent) => {
@@ -191,7 +192,7 @@
     S.data.agents.forEach((a) => {
       if (a.providerId !== providerId) return;
       a.providerId = fallback ? fallback.id : null;
-      a.modelId = fallback && fallback.models[0] ? fallback.models[0].id : null;
+      a.modelId = fallback && fallback.models && fallback.models[0] ? fallback.models[0].id : null;
     });
     S.persist();
     S.emit('change');

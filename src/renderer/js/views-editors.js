@@ -157,7 +157,7 @@
 
     U.qs('#pv-discover', root).onclick = async () => {
       const status = U.qs('#pv-status', root);
-      status.textContent = 'Fetching…';
+      status.textContent = window.I18n.t('Fetching…');
       const temp = {
         ...p,
         name: U.qs('#pv-name', root).value,
@@ -175,9 +175,9 @@
           }
         }
         drawModels();
-        status.textContent = `${list.length} models found, ${added} new`;
+        status.textContent = S.data.ui.locale === 'en' ? `${list.length} models found, ${added} new` : `Найдено моделей: ${list.length}, новых: ${added}`;
       } catch (err) {
-        status.textContent = `Could not fetch models: ${err.message}`;
+        status.textContent = `${S.data.ui.locale === 'en' ? 'Could not fetch models' : 'Не удалось получить модели'}: ${err.message}`;
         status.classList.add('danger-text');
       }
     };
@@ -255,7 +255,7 @@
       <div class="agent-editor">
         <div class="avatar-col">
           <div class="avatar-big" id="ag-preview"></div>
-          <div class="avatar-grid">${V.PRESET_AVATARS.map((f) => `<button class="avatar-pick" data-avatar="${f}"><img src="assets/avatars/${f}" alt="" /></button>`).join('')}</div>
+          <div class="avatar-grid">${V.PRESET_AVATARS.map((f) => `<button class="avatar-pick" data-avatar="${f}" aria-label="${S.data.ui.locale === 'en' ? 'Choose avatar' : 'Выбрать аватарку'} ${U.esc(f)}"><img src="assets/avatars/${f}" alt="" /></button>`).join('')}</div>
           <button class="btn ghost small block" id="ag-upload">Upload…</button>
           <button class="btn ghost small block" id="ag-remove-avatar">Use initials</button>
         </div>
@@ -293,8 +293,8 @@
     const drawPreview = () => {
       const el = U.qs('#ag-preview', root);
       el.innerHTML = a.avatar && !/^cat\d+\.jpg$/.test(a.avatar)
-        ? a.avatar.startsWith('data:')
-          ? `<img src="${a.avatar}" alt="" />`
+        ? /^data:image\/(png|jpeg|webp|gif);base64,[a-zA-Z0-9+/=]+$/.test(a.avatar)
+          ? `<img src="${U.esc(a.avatar)}" alt="" />`
           : U.esc(U.initials(a.name || 'Agent'))
         : /^cat\d+\.jpg$/.test(a.avatar || '')
           ? `<img src="assets/avatars/${a.avatar}" alt="" />`
@@ -340,11 +340,10 @@
       };
     });
     U.qs('#ag-upload', root).onclick = async () => {
-      const dataUrl = await window.comrade.dialog.image();
-      if (dataUrl) {
-        a.avatar = dataUrl;
-        drawPreview();
-      }
+      try {
+        const dataUrl = await window.comrade.dialog.image();
+        if (dataUrl) { a.avatar = dataUrl; drawPreview(); }
+      } catch (err) { window.TOAST(err.message, 'error'); }
     };
     U.qs('#ag-remove-avatar', root).onclick = () => {
       a.avatar = '';
@@ -388,7 +387,7 @@
         S.persist();
       }
       V.closeModal();
-      window.TOAST(isNew ? `${a.name} joined the agency` : 'Agent saved');
+      window.TOAST(isNew ? S.data.ui.locale === 'en' ? `${a.name} joined the agency` : `Агент ${a.name} создан` : 'Agent saved');
       window.App.refresh();
     };
   };
@@ -468,7 +467,7 @@
       </div>
       <div class="modal-section">
         <div class="modal-section-head"><span>Tools</span><button class="btn ghost small" id="cn-sync" type="button">Sync now</button></div>
-        <div id="cn-tools" class="cn-tools">${(c.tools || []).map((t) => `<span class="chip mono">${U.esc(t.name)}</span>`).join('') || '<span class="muted small">Not synced yet.</span>'}</div>
+        <div id="cn-tools" class="cn-tools">${(c.tools || []).map((t) => `<span class="chip mono">${U.esc(t.name)}</span>`).join('') || `<span class="muted small">${window.I18n.t('Not synced yet.')}</span>`}</div>
         <div class="field-hint" id="cn-status"></div>
       </div>
       ${c.docs ? `<div class="field-hint">Docs: <a href="${U.esc(c.docs)}" target="_blank" rel="noreferrer">${U.esc(c.docs)}</a></div>` : ''}`;
@@ -487,6 +486,8 @@
       const type = U.qs('#cn-type .active', root)?.dataset.type || 'http';
       if (type === 'http') {
         c.server = {
+          authMode: c.server.authMode,
+          oauthClientId: c.server.oauthClientId,
           type: 'http',
           url: U.qs('#cn-url', root).value.trim(),
           headers: parseJson(U.qs('#cn-headers', root).value, {})
@@ -515,18 +516,20 @@
     U.qs('#cn-sync', root).onclick = async () => {
       readForm();
       const status = U.qs('#cn-status', root);
-      status.textContent = 'Connecting…';
+      status.textContent = window.I18n.t('Connecting…');
       status.classList.remove('danger-text');
       try {
-        const res = await Mcp.test(c.server);
+        const res = existing && c.server.type === 'http'
+          ? { transport: 'http', tools: (await window.comrade.mcp.listTools({ connectionId: c.id })).tools }
+          : await Mcp.test(c.server);
         c.tools = res.tools;
         c.lastSync = Date.now();
         U.qs('#cn-tools', root).innerHTML = res.tools.length
           ? res.tools.map((t) => `<span class="chip mono" title="${U.esc(t.description)}">${U.esc(t.name)}</span>`).join('')
           : '<span class="muted small">Connected, but the server exposes no tools.</span>';
-        status.textContent = `Connected (${res.transport}) · ${res.tools.length} tools`;
+        status.textContent = S.data.ui.locale === 'en' ? `Connected (${res.transport}) · ${res.tools.length} tools` : `Подключено (${res.transport}) · инструментов: ${res.tools.length}`;
       } catch (err) {
-        status.textContent = `Failed: ${err.message}`;
+        status.textContent = `${S.data.ui.locale === 'en' ? 'Failed' : 'Ошибка'}: ${err.message}`;
         status.classList.add('danger-text');
       }
     };
@@ -557,6 +560,10 @@
     U.qs('#cn-save', root).onclick = () => {
       readForm();
       if (c.server.type === 'http' && !c.server.url) return window.TOAST('Server URL is required', 'error');
+      if (c.server.type === 'http' && c.server.url) {
+        try { const u = new URL(c.server.url); if (u.protocol !== 'https:' && !(u.protocol === 'http:' && ['127.0.0.1','localhost','[::1]'].includes(u.hostname))) throw Error(); }
+        catch { return window.TOAST('Для удалённого MCP требуется HTTPS', 'error'); }
+      }
       if (c.server.type === 'stdio' && !c.server.command) return window.TOAST('Launch command is required', 'error');
       S.set((data) => {
         const i = data.connections.findIndex((x) => x.id === c.id);

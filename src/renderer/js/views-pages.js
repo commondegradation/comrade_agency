@@ -191,7 +191,7 @@
           <button class="btn ghost" data-action="setup-connections">Connections</button>
         </div>
       </div>
-      <p class="setup-foot">v${U.esc(window.APP_VERSION || '1.0.0')} · your keys stay on this machine</p>
+      <p class="setup-foot">v${U.esc(window.APP_VERSION || '1.0.0')} · ${window.S.data.ui.locale === 'en' ? 'your keys stay on this machine' : 'ключи остаются на этом компьютере'}</p>
     </div>`;
     el.querySelector('[data-action="setup-providers"]').onclick = () => window.App.openProviderEditor(null);
     el.querySelector('[data-action="setup-agent"]').onclick = () => window.App.openAgentEditor(null);
@@ -255,8 +255,8 @@
           </label>
         </div>
         <div class="conn-url mono">${U.esc(c.server?.type === 'stdio' ? [c.server.command, ...(c.server.args || [])].join(' ') : c.server?.url || '')}</div>
-        <div class="conn-meta">${(c.tools || []).length} tool${(c.tools || []).length === 1 ? '' : 's'}${c.lastSync ? ` · synced ${U.relTime(c.lastSync)}` : ''}${c.lastError ? ` · <span class="danger-text">${U.esc(U.truncate(c.lastError, 80))}</span>` : ''}</div>
-        <pre class="conn-tools">${U.esc((c.tools || []).map((t) => t.name).join('\n') || '— not synced —')}</pre>
+        <div class="conn-meta">${(c.tools || []).length} ${S.data.ui.locale === 'en' ? 'tools' : 'инструментов'}${c.lastSync ? ` · ${S.data.ui.locale === 'en' ? 'synced' : 'обновлено'} ${U.relTime(c.lastSync)}` : ''}${c.lastError ? ` · <span class="danger-text">${U.esc(U.truncate(c.lastError, 80))}</span>` : ''}</div>
+        <pre class="conn-tools">${U.esc((c.tools || []).map((t) => t.name).join('\n') || window.I18n.t('— not synced —'))}</pre>
         <div class="conn-actions">
           <button class="btn ghost small" data-conn-sync="${c.id}">Sync tools</button>
           <button class="btn ghost small" data-conn-edit="${c.id}">Edit</button>
@@ -279,7 +279,7 @@
         ? Object.entries(groups).map(([g, list]) => `<h4 class="group-title">${g}</h4><div class="conn-grid">${list.map(card).join('')}</div>`).join('')
         : `<div class="blank-state">
             <h3>No connections</h3>
-            <p>GitHub, Google Mail, Calendar, Drive, Notion, Linear, Slack — or a local sandboxed filesystem.</p>
+            <p>Для облачных сервисов нужен рабочий сервер MCP; для локальных — команда запуска сервера.</p>
             <button class="btn primary" data-action="catalog">Browse catalog</button>
           </div>`}
     </div>`;
@@ -294,6 +294,8 @@
     el.innerHTML = `<div class="page narrow">
       <div class="page-head"><div><h2>Settings</h2><p class="page-sub">Everything is stored locally on this machine.</p></div></div>
       <div class="settings-block">
+        <label class="row-toggle"><span>Язык / Language</span><select class="input" id="set-language" style="max-width:180px"><option value="ru" ${s.locale !== 'en' ? 'selected' : ''}>Русский</option><option value="en" ${s.locale === 'en' ? 'selected' : ''}>English</option></select></label>
+        <div class="row-actions"><button class="btn ghost small" data-locale="ru">Русский</button><button class="btn ghost small" data-locale="en">English</button></div>
         <label class="row-toggle"><span>Show reasoning blocks</span>
           <label class="switch"><input type="checkbox" id="set-thinking" ${s.showThinking ? 'checked' : ''}/><span></span></label></label>
         <label class="row-toggle"><span>Open the artifact panel automatically</span>
@@ -329,6 +331,13 @@
       S.data.ui[key] = value;
       S.persist();
     };
+    U.qs('#set-language').onchange = async (e) => {
+      set('locale', e.target.value);
+      await S.persistNow();
+      window.I18n.apply();
+      window.App.refresh();
+    };
+    U.qsa('[data-locale]').forEach(b => { b.onclick = async () => { set('locale', b.dataset.locale); await S.persistNow(); window.I18n.apply(); window.App.refresh(); }; });
     U.qs('#set-thinking').onchange = (e) => {
       set('showThinking', e.target.checked);
       V.renderChat();

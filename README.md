@@ -1,5 +1,10 @@
 # Comrade Agency
 
+Comrade Agency — desktop chat app for AI agents with providers, MCP connections and single-file code artifacts.
+
+Russian interface, Microsoft Office reference, avatars and MCP OAuth: see [IMPLEMENTATION.md](docs/IMPLEMENTATION.md).
+
+Install dependencies with `npm install`, then `npm test` for automated checks, `npm start` to run.
 A desktop messenger for AI agents. Bring your own model providers, hand each agent a
 set of MCP connections, and every reply that carries code becomes **one runnable
 artifact** — a single file you can preview, copy or save.
@@ -33,8 +38,6 @@ Black and white, no telemetry, keys stay on your machine.
 - Node.js 18+ and npm (only to install and package)
 - macOS 11+ or Windows 10+
 
-## Getting started
-
 ```bash
 npm install
 npm start          # run the app from source
@@ -49,6 +52,14 @@ First run shows the welcome screen:
 2. **Create an agent** — `+ New Agent` in the sidebar: name, avatar, prompt, model.
 3. **Connect tools** — `Connections` → *Browse catalog*, then *Sync tools* to pull the
    tool list from the server and tick the connections the agent may use.
+
+## Testing
+
+```bash
+npm install
+npm test          # 51 unit-tests: store, i18n, knowledge, avatars, MCP
+python3 tests/check_assets.py   # renderer paths, reference schema, package deps
+```
 
 ## Keyboard shortcuts
 
@@ -77,17 +88,25 @@ the interface renders identically offline.
 src/main/            Electron main process
   main.js            window, menu, IPC surface
   preload.js         context-isolated bridge (window.comrade)
-  services/store.js  JSON store with atomic writes
-  services/ai.js     OpenAI-compatible streaming + MCP HTTP client
+  services/store.js  JSON store with atomic writes + normalize
+  services/ai.js     OpenAI-compatible streaming + tool dispatch
   services/mcp.js    MCP tool namespacing / schema flattening
   services/stdio.js  short-lived stdio MCP bridge
+  services/remote-mcp.js   Streamable HTTP MCP + OAuth (PKCE via SDK)
+  services/credentials.js  OAuth tokens in Electron safeStorage
+  services/avatar.js image crop → 256×256 PNG data URL
+  services/knowledge.js  local Microsoft Office reference search
+src/reference/       microsoft.json — curated Office how-to articles
 src/renderer/        UI (no bundler: plain scripts sharing window.* modules)
   index.html         shell + CSP
-  css/               fonts.css, app.css
-  js/                util, store, thoughts, artifacts, mcp-client, chat, views*
+  css/               fonts.css, app.css, extensions.css
+  js/                util, store, thoughts, artifacts, mcp-client, chat,
+                     views, views-pages, views-editors, i18n, integrations, app
+  assets/avatars/    cat1–cat8.jpg (preset avatars)
 assets/fonts/        LINE Seed JP + Climate Crisis (bundled offline)
 build/               generated application icons
-scripts/             icon generators
+scripts/             icon generators, preview_server.py
+tests/               node --test unit tests + check_assets.py
 ```
 
 ## Notes

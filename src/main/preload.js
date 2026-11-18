@@ -40,10 +40,12 @@ contextBridge.exposeInMainWorld('comrade', {
   },
 
   mcp: {
+    auth: (id, action) => ipcRenderer.invoke('mcp:auth', { id, action }),
+    execute: (agentId, connectionId, name, args) => ipcRenderer.invoke('mcp:execute', { agentId, connectionId, name, args }),
     listTools: (server) => ipcRenderer.invoke('mcp:listTools', { server }),
-    callTool: (server, name, args) => ipcRenderer.invoke('mcp:callTool', { server, name, args }),
     stdio: (id, spec, requests) => ipcRenderer.invoke('mcp:stdio', { id, spec, requests })
   },
 
+  knowledge: { search: (query) => ipcRenderer.invoke('knowledge:search', query) },
   onMenu: listeners('menu')
 });

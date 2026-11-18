@@ -28,7 +28,7 @@ function expandArg(a) {
   return String(a).replace(/^HOME(?=\/|$)/, os.homedir());
 }
 
-ipcMain.handle('mcp:stdio', (_e, { spec, requests }) => new Promise((resolve, reject) => {
+function request(spec, requests) { return new Promise((resolve, reject) => {
   if (!launchSpecOk(spec)) return reject(new Error('No launch command configured'));
   if (!Array.isArray(requests) || requests.length === 0) return reject(new Error('Nothing to ask the server'));
   const command = expandArg(spec.command.trim());
@@ -86,7 +86,13 @@ ipcMain.handle('mcp:stdio', (_e, { spec, requests }) => new Promise((resolve, re
       let msg;
       try { msg = JSON.parse(line); } catch { continue; }
       if (msg.id === undefined) continue;
+      if (msg.id !== responses.size + 1) continue;
+      if (msg.error) return finish(new Error(msg.error.message || 'MCP error'));
       responses.set(msg.id, msg);
+      if (responses.size === 1 && requests[0].method === 'initialize') {
+        child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+      }
+      if (responses.size < requests.length) sendRequest(responses.size);
       const last = requests.length;
       if (responses.size >= last) {
         settled = true;
@@ -99,11 +105,18 @@ ipcMain.handle('mcp:stdio', (_e, { spec, requests }) => new Promise((resolve, re
     }
   });
 
-  requests.forEach((req, i) => {
+  function sendRequest(i) {
+    const req = requests[i];
     try {
       child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: i + 1, method: req.method, params: req.params || {} })}\n`);
     } catch (err) {
       finish(new Error(`Cannot talk to the local server: ${err.message}`));
     }
-  });
-}));
+  }
+  sendRequest(0);
+}); }
+ipcMain.handle('mcp:stdio', (_e, { spec, requests }) => {
+  if (requests.some(r => r.method === 'tools/call')) throw new Error('Используйте разрешённое подключение агента');
+  return request(spec, requests);
+});
+module.exports = { request };

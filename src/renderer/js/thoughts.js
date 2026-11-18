@@ -68,6 +68,9 @@
   ];
 
   function pool(kind) {
+    if (window.S?.data.ui.locale !== 'en') return kind === 'code'
+      ? ['Пишу код…', 'Собираю единый файл…', 'Проверяю структуру…', 'Готовлю результат…']
+      : ['Изучаю вопрос…', 'Проверяю факты…', 'Продумываю решение…', 'Обращаюсь к справке…', 'Проверяю детали…'];
     return kind === 'code' ? CODE_THOUGHTS : THOUGHTS;
   }
 
@@ -80,6 +83,7 @@
   }
 
   function forTool(connTitle, toolName) {
+    if (window.S?.data.ui.locale !== 'en') return `Запрашиваю ${toolName} в ${connTitle}…`;
     const t = TOOL_THOUGHTS[Math.floor(Math.random() * TOOL_THOUGHTS.length)];
     return t.replace('{conn}', connTitle).replace('{tool}', toolName);
   }

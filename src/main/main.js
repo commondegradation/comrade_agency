@@ -78,7 +78,7 @@ ipcMain.handle('app:info', () => ({
 }));
 
 ipcMain.handle('store:get', () => store.get());
-ipcMain.handle('store:set', (_e, value) => store.set(value));
+ipcMain.handle('store:set', (_e, value) => { const result = store.set(value); buildMenu(); return result; });
 ipcMain.handle('store:reveal', () => shell.showItemInFolder(store.filePath()));
 
 /* ------------------------------------------------------------------ *
@@ -86,16 +86,12 @@ ipcMain.handle('store:reveal', () => shell.showItemInFolder(store.filePath()));
  * ------------------------------------------------------------------ */
 ipcMain.handle('dialog:image', async () => {
   const res = await dialog.showOpenDialog(mainWindow, {
-    title: 'Choose an avatar',
+    title: store.get().ui?.locale === 'en' ? 'Choose an avatar' : 'Выберите аватарку',
     properties: ['openFile'],
     filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
   });
   if (res.canceled || !res.filePaths[0]) return null;
-  const fs = require('fs');
-  const buf = fs.readFileSync(res.filePaths[0]);
-  const ext = path.extname(res.filePaths[0]).slice(1).toLowerCase();
-  const mime = ext === 'jpg' ? 'jpeg' : ext;
-  return `data:image/${mime};base64,${buf.toString('base64')}`;
+  return require('./services/avatar').fromFile(res.filePaths[0]);
 });
 
 ipcMain.handle('file:save', async (_e, { name, content, filterName, ext }) => {
@@ -125,8 +121,11 @@ ipcMain.handle('ai:start', (e, payload) => {
   };
   // Remote MCP connections are executed in the renderer, so the set of
   // tools that actually exists is asserted here before anything is sent.
+  const agent = store.get().agents.find(a => a.id === payload.agentId);
+  payload.agentConnectionIds = agent?.connectionIds || [];
+  const requested = new Set((payload.tools || []).map(t => (t.function || t).name));
   payload.tools = mcp.toolsForConnections(store.get().connections, payload.agentConnectionIds)
-    .tools.map((t) => t.function);
+    .tools.map((t) => t.function).filter(t => requested.has(t.name));
   ai.runStream(payload, {
     signal: controller.signal,
     onEvent: send
@@ -150,15 +149,47 @@ ipcMain.handle('ai:cancel', (_e, id) => {
 /* ------------------------------------------------------------------ *
  * IPC: MCP connections (remote HTTP servers)
  * ------------------------------------------------------------------ */
-ipcMain.handle('mcp:listTools', async (_e, { server }) => ai.listToolsOnServer(server));
-ipcMain.handle('mcp:callTool', async (_e, { server, name, args }) => ai.callTool({ server }, name, args));
-ipcMain.handle('mcp:testTools', async (_e, { server }) => (await ai.listToolsOnServer(server)).tools);
+const remoteMcp = require('./services/remote-mcp');
+const knowledge = require('./services/knowledge');
+ipcMain.handle('mcp:listTools', async (_e, { server }) => {
+  if (server.connectionId) return remoteMcp.list(server.connectionId);
+  return ai.listToolsOnServer(server);
+});
+ipcMain.handle('mcp:auth', async (_e, { id, action }) => {
+  if (!['start', 'status', 'disconnect'].includes(action)) throw new Error('Недопустимое действие');
+  return remoteMcp[action](id);
+});
+ipcMain.handle('mcp:execute', async (_e, { agentId, connectionId, name, args }) => {
+  const data = store.get();
+  const agent = data.agents.find(a => a.id === agentId);
+  const c = data.connections.find(c => c.id === connectionId && c.enabled);
+  if (!agent || !c || !(agent.connectionIds || []).includes(c.id)) throw new Error('Агенту не разрешено это подключение');
+  const tool = (c.tools || []).find(t => t.name === name);
+  if (!tool) throw new Error('Инструмент не найден. Синхронизируйте подключение.');
+  // Annotations are server claims, not authorization. Confirm every external call
+  // conservatively: even a tool called "read" may have side effects.
+  const choice = await dialog.showMessageBox(mainWindow, {
+    type: 'question', title: 'Действие агента',
+    message: `${agent.name} → ${c.title}: ${name}`,
+    detail: `Проверьте параметры перед выполнением:\n${JSON.stringify(args || {}, null, 2).slice(0, 6000)}`,
+    buttons: ['Отменить', 'Разрешить один раз'], defaultId: 0, cancelId: 0, noLink: true
+  });
+  if (choice.response !== 1) return { isError: true, content: [{ type: 'text', text: 'Пользователь отклонил действие' }] };
+  if (c.server.type === 'stdio') return require('./services/stdio').request(c.server, [
+    { method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'comrade-agency', version: '1.0.0' } } },
+    { method: 'tools/call', params: { name, arguments: args || {} } }
+  ]);
+  return remoteMcp.call(c.id, name, args);
+});
+ipcMain.handle('knowledge:search', (_e, query) => knowledge.search(query));
 
 /* ------------------------------------------------------------------ *
  * Menu
  * ------------------------------------------------------------------ */
 function buildMenu() {
   const send = (event) => mainWindow && mainWindow.webContents.send('menu', event);
+  const nativeLabels = { 'Settings…':'Настройки…', 'File':'Файл', 'New Agent':'Новый агент', 'New Chat':'Новый чат', 'Edit':'Правка', 'View':'Вид', 'Toggle Artifact Panel':'Панель файлов' };
+  const localize = items => items.forEach(item => { if (store.get().ui?.locale !== 'en' && nativeLabels[item.label]) item.label = nativeLabels[item.label]; if (item.submenu) localize(item.submenu); });
   const template = [
     ...(process.platform === 'darwin'
       ? [{
@@ -214,6 +245,7 @@ function buildMenu() {
       ]
     }
   ];
+  localize(template);
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 

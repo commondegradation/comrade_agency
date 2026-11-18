@@ -31,7 +31,7 @@
     const setup = U.qs('#view-setup');
     const main = U.qs('#view-main');
 
-    if (!hasSetup && (S.route === 'setup' || !data.agents.length)) {
+    if (!hasSetup && (S.route === 'setup' || S.route === 'chat')) {
       setup.classList.remove('hidden');
       main.classList.add('hidden');
       window.Views.renderSetup();
@@ -125,7 +125,7 @@
       {
         label: 'Rename…',
         run: () => {
-          const name = prompt('Chat title', chat.title);
+          const name = prompt(window.I18n.t('Chat title'), chat.title);
           if (name) S.renameChat(chatId, name);
         }
       },
@@ -150,7 +150,7 @@
     document.querySelectorAll('.popmenu').forEach((m) => m.remove());
     const menu = document.createElement('div');
     menu.className = 'popmenu';
-    menu.innerHTML = items.map((it, i) => `<button data-i="${i}" class="${it.danger ? 'danger-text' : ''}">${U.esc(it.label)}</button>`).join('');
+    menu.innerHTML = items.map((it, i) => `<button data-i="${i}" class="${it.danger ? 'danger-text' : ''}">${U.esc(window.I18n.t(it.label))}</button>`).join('');
     document.body.appendChild(menu);
     const r = anchor.getBoundingClientRect();
     menu.style.left = `${Math.min(r.left, window.innerWidth - 220)}px`;
@@ -182,7 +182,6 @@
         return;
       }
       const action = e.target.closest('[data-action]')?.dataset.action;
-      if (!action) return;
       switch (action) {
         case 'add-provider':
           App.openProviderEditor(null);
@@ -367,6 +366,7 @@
     document.documentElement.classList.add(`platform-${info.platform}`);
 
     await S.load();
+    window.I18n.init();
 
     // pick an existing conversation on launch
     if (S.data.chats.length) {

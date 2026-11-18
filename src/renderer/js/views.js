@@ -14,8 +14,8 @@
    * ================================================================== */
   V.avatarHTML = (agent, size = 'md') => {
     if (!agent) return `<span class="avatar ${size}">?</span>`;
-    if (agent.avatar && agent.avatar.startsWith('data:')) {
-      return `<img class="avatar ${size}" src="${agent.avatar}" alt="" />`;
+    if (/^data:image\/(png|jpeg|webp|gif);base64,[a-zA-Z0-9+/=]+$/.test(agent.avatar || '')) {
+      return `<img class="avatar ${size}" src="${U.esc(agent.avatar)}" alt="" />`;
     }
     if (/\.(png|jpe?g|webp|gif|svg)$/i.test(agent.avatar || '')) {
       return `<img class="avatar ${size}" src="assets/avatars/${U.esc(agent.avatar)}" alt="" />`;
@@ -49,7 +49,7 @@
           const unreadDot = window.ChatRT.Live.chatId === c.id && S.streaming;
           const snippet = unreadDot
             ? `<span class="thinking-mini">${U.esc(window.ChatRT.Live.thought)}</span>`
-            : U.esc(U.truncate(last ? last.text : 'No messages', 46)) || 'No messages';
+            : U.esc(U.truncate(last ? last.text : window.I18n.t('No messages'), 46)) || window.I18n.t('No messages');
           return `<button class="chat-item ${c.id === chat?.id ? 'active' : ''}" data-chat="${c.id}">
             <span class="avatar-wrap">${V.avatarHTML(agent, 'sm')}<span class="presence ${agent ? 'on' : 'off'}"></span></span>
             <span class="chat-item-body">
@@ -245,7 +245,7 @@
       : `<div class="chat-intro">
           ${V.avatarHTML(agent, 'xl')}
           <h2>${U.esc(agent.name)}</h2>
-          <p class="prompt-preview">${U.esc(U.truncate(agent.systemPrompt || 'No system prompt.', 220))}</p>
+          <p class="prompt-preview">${U.esc(U.truncate(agent.systemPrompt || window.I18n.t('No system prompt.'), 220))}</p>
           ${S.agentConnections(agent).length ? `<div class="intro-conn">Toolbelt: ${S.agentConnections(agent).map((c) => `<span class="pill">${U.esc(c.title)}</span>`).join(' ')}</div>` : ''}
         </div>`;
 
@@ -255,7 +255,7 @@
     host.innerHTML = `<div class="composer">
         ${S.agentConnections(agent).length ? `<div class="composer-tools">${S.agentConnections(agent).map((c) => `<span class="pill">${U.esc(c.title)}</span>`).join('')}</div>` : ''}
         <div class="composer-box">
-          <textarea id="composer-input" rows="1" placeholder="Message ${U.esc(agent.name)}…" ${canSend ? '' : 'disabled'}></textarea>
+          <textarea id="composer-input" rows="1" placeholder="${window.I18n.ru() ? 'Сообщение для' : 'Message'} ${U.esc(agent.name)}…" ${canSend ? '' : 'disabled'}></textarea>
           <div class="composer-side">
             ${S.streaming ? '<button class="btn danger small" data-action="stop">Stop</button>' : '<button class="btn primary small send" data-action="send" title="Send (Enter)">Send</button>'}
           </div>

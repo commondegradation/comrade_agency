@@ -44,7 +44,7 @@ function normalize(raw) {
     if (!providerIds.has(agent.providerId)) {
       const p = data.providers[0];
       agent.providerId = p ? p.id : null;
-      agent.modelId = p && p.models[0] ? p.models[0].id : null;
+      agent.modelId = p && p.models && p.models[0] ? p.models[0].id : null;
     }
     agent.connectionIds = Array.isArray(agent.connectionIds)
       ? agent.connectionIds.filter((id) => data.connections.some((c) => c.id === id))

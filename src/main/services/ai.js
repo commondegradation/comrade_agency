@@ -23,11 +23,14 @@ function resolveTarget(cfg) {
 }
 
 function messagesFor(cfg) {
-  const system = [cfg.systemPrompt, cfg.toolsGuide].filter((s) => typeof s === 'string' && s.trim()).join('\n\n');
+  const latest = (cfg.messages || []).filter(m => m.role === 'user').at(-1)?.content || '';
+  const reference = require('./knowledge').context(latest);
+  const system = [cfg.systemPrompt, cfg.toolsGuide, reference].filter((s) => typeof s === 'string' && s.trim()).join('\n\n');
   const history = (Array.isArray(cfg.messages) ? cfg.messages : [])
-    .filter((m) => isObj(m) && (m.role === 'user' || m.role === 'assistant') && isStr(m.content))
-    .slice(-80)
-    .map((m) => ({ role: m.role, content: m.content.slice(0, 200000) }));
+    .filter((m) => isObj(m) && ['user', 'assistant', 'tool'].includes(m.role) && isStr(m.content))
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 200000),
+      ...(m.role === 'tool' && isStr(m.tool_call_id, 200) ? { tool_call_id: m.tool_call_id } : {}),
+      ...(m.role === 'assistant' && Array.isArray(m.tool_calls) ? { tool_calls: m.tool_calls } : {}) }));
   if (system) return [{ role: 'system', content: system }, ...history];
   return history;
 }

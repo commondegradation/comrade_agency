@@ -170,7 +170,7 @@ for line in sys.stdin:
     const map = {};
     for (const conn of connections || []) {
       if (!conn.enabled) continue;
-      if (Array.isArray(ids) && ids.length && !ids.includes(conn.id)) continue;
+      if (Array.isArray(ids) && !ids.includes(conn.id)) continue;
       const h = shortHash(conn.id);
       for (const tool of (conn.tools || []).slice(0, 40)) {
         const exposed = `mcp_${safeName(tool.name)}_${h}`;
@@ -274,7 +274,7 @@ for line in sys.stdin:
       tools = await stdioListTools(conn);
     } else {
       if (!conn.server.url) throw new Error('No server URL configured');
-      tools = await httpListTools(conn.server);
+      tools = await httpListTools({ connectionId: conn.id });
     }
     conn.tools = tools;
     conn.lastSync = Date.now();
@@ -296,9 +296,9 @@ for line in sys.stdin:
   async function callTool(conn, toolName, args) {
     const started = Date.now();
     try {
-      const out = pickTransport(conn) === 'stdio'
-        ? await stdioCallTool(conn, toolName, args)
-        : await httpCallTool(conn.server, toolName, args);
+      const result = await api.mcp.execute(window.S.activeAgent()?.id, conn.id, toolName, args);
+      const out = Array.isArray(result?.content) ? result.content.map(c => c.type === 'text' ? c.text : `[${c.type}]`).join('\n') : result;
+      if (result?.isError) return { ok: false, output: String(out || 'Ошибка инструмента'), ms: Date.now() - started };
       conn.status = 'connected';
       conn.lastError = null;
       return { ok: true, output: typeof out === 'string' ? out : JSON.stringify(out, null, 2), ms: Date.now() - started };
@@ -312,7 +312,7 @@ for line in sys.stdin:
   /* ------------------------------------------------------------------ *
    * Built-in server scripts (can be copied out and launched by the user)
    * ------------------------------------------------------------------ */
-  const SCRIPTS = { 'filesystem-server.js': JS, 'memory-server.py': PY };
+  const SCRIPTS = { 'filesystem-server.js': JS.filesystem, 'memory-server.py': PY };
 
   window.Mcp = {
     toolsForConnections,

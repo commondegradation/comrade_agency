@@ -27,6 +27,7 @@ When the answer involves code, a script, a page, an app or a config file, write 
     );
     if (agent.systemPrompt && agent.systemPrompt.trim()) parts.push(agent.systemPrompt.trim());
     parts.push(STYLE_GUIDE);
+    parts.push(S.data.ui.locale === 'en' ? 'Use English for application guidance unless the user writes in another language.' : 'Отвечай на языке пользователя; если язык неясен, используй русский.');
     parts.push(CODE_GUIDE.trim());
     if (tools && tools.length) {
       parts.push(
@@ -43,7 +44,10 @@ When the answer involves code, a script, a page, an app or a config file, write 
       if (m.role === 'user') {
         if (m.text) out.push({ role: 'user', content: m.text });
       } else if (m.role === 'assistant') {
-        if ((m.toolCalls || []).length) {
+        if (m.transcript?.length) {
+          out.push(...m.transcript);
+          if (m.text) out.push({ role: 'assistant', content: m.text });
+        } else if ((m.toolCalls || []).length) {
           out.push({
             role: 'assistant',
             content: m.text || '',
@@ -82,6 +86,8 @@ When the answer involves code, a script, a page, an app or a config file, write 
   let unsub = null;
   let early = [];
   let opening = false;
+  let round = 0;
+  let cancelled = false;
 
   function resetLive(chatId, messageId) {
     Object.assign(Live, {
@@ -101,6 +107,8 @@ When the answer involves code, a script, a page, an app or a config file, write 
   }
 
   function stop() {
+    cancelled = true;
+    Live.phase = 'stopped';
     if (Live.streamId) api.ai.cancel(Live.streamId).catch(() => {});
     Live.streamId = null;
     if (opening) {
@@ -167,6 +175,7 @@ When the answer involves code, a script, a page, an app or a config file, write 
 
   function payloadFor(agent, messages, tools) {
     return {
+      agentId: agent.id,
       providerId: agent.providerId,
       modelId: agent.modelId,
       messages,
@@ -179,6 +188,8 @@ When the answer involves code, a script, a page, an app or a config file, write 
 
   async function runAgent(chat, agent) {
     if (S.streaming) return;
+    round = 0;
+    cancelled = false;
     S.toolRuns = [];
     S.draftArtifacts = [];
     S.draftRev = 0;
@@ -214,6 +225,7 @@ When the answer involves code, a script, a page, an app or a config file, write 
     const { map } = S.toolsForAgent(agent);
     const results = [];
     for (const call of calls) {
+      if (cancelled) break;
       const target = map[call.name];
       const run = {
         id: call.id,
@@ -290,7 +302,10 @@ When the answer involves code, a script, a page, an app or a config file, write 
     assistant.liveMs = Date.now() - Live.startedAt;
     assistant.toolCalls = assistant.toolCalls || [];
 
-    if (!stopped && final && final.toolCalls && final.toolCalls.length) {
+    if (!cancelled && !stopped && final && final.toolCalls && final.toolCalls.length && round++ < MAX_TOOL_ROUNDS) {
+      S.streaming = true;
+      const beforeTools = historyFor({ messages: chat.messages.filter(m => m !== assistant) }).concat(assistant.transcript || []);
+      const previousText = assistant.text;
       const agent = S.agent(assistant.authorId) || S.activeAgent();
       const toolRuns = await runTools(final.toolCalls, assistant);
       const toolMessages = [
@@ -321,8 +336,10 @@ When the answer involves code, a script, a page, an app or a config file, write 
       S.persist();
       window.Views.renderChat();
 
-      const messages = historyFor(chat).concat(toolMessages, [followUp]);
-      const tools = S.toolsForAgent(agent).tools;
+      if (cancelled) { assistant.status = 'stopped'; S.streaming = false; S.persist(); window.Views.renderChat(); return; }
+      assistant.transcript = (assistant.transcript || []).concat(toolMessages);
+      const messages = beforeTools.concat(toolMessages, [followUp]);
+      const tools = round < MAX_TOOL_ROUNDS ? S.toolsForAgent(agent).tools : [];
       await beginStreaming(payloadFor(agent, messages, tools));
       return;
     }

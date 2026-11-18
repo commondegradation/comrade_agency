@@ -3,5 +3,4 @@ dist/
 .tmp/
 .probe-userdata/
 .DS_Store
-.probe-userdata/
-.DS_Store
+.sharrowkin/
