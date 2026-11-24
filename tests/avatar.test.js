@@ -35,4 +35,9 @@ test('fromFile rejects empty buffer (unsupported image)', () => {
   assert.throws(() => avatar.fromFile(file), /изображением/);
 });
 
+test('bannerFromFile preserves a wide project image as an image data URL', () => {
+  const file = makeTmpPng(1024);
+  assert.match(avatar.bannerFromFile(file), /^data:image\/png;base64,/);
+});
+
 restore();

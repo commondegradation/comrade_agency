@@ -5,6 +5,8 @@
 // where an API key is sent.
 const store = require('./store');
 const mcp = require('./mcp');
+const webSearch = require('./web-search');
+const computerControl = require('./computer-control');
 
 const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
 const isStr = (v, max = 100000) => typeof v === 'string' && v.length <= max;
@@ -27,8 +29,9 @@ function messagesFor(cfg) {
   const reference = require('./knowledge').context(latest);
   const system = [cfg.systemPrompt, cfg.toolsGuide, reference].filter((s) => typeof s === 'string' && s.trim()).join('\n\n');
   const history = (Array.isArray(cfg.messages) ? cfg.messages : [])
-    .filter((m) => isObj(m) && ['user', 'assistant', 'tool'].includes(m.role) && isStr(m.content))
-    .map((m) => ({ role: m.role, content: m.content.slice(0, 200000),
+    .filter((m) => isObj(m) && ['user', 'assistant', 'tool'].includes(m.role)
+      && isStr(m.content, m.role === 'user' ? 1000000 : 100000))
+    .map((m) => ({ role: m.role, content: m.content.slice(0, m.role === 'user' ? 1000000 : 200000),
       ...(m.role === 'tool' && isStr(m.tool_call_id, 200) ? { tool_call_id: m.tool_call_id } : {}),
       ...(m.role === 'assistant' && Array.isArray(m.tool_calls) ? { tool_calls: m.tool_calls } : {}) }));
   if (system) return [{ role: 'system', content: system }, ...history];
@@ -47,6 +50,36 @@ function toolList(cfg) {
 
 function baseUrl(provider) {
   return String(provider.baseUrl || '').replace(/\/+$/, '');
+}
+
+function isOllama(provider) {
+  if (provider.apiType === 'ollama' || /ollama/i.test(provider.name || '')) return true;
+  try {
+    return new URL(provider.baseUrl).port === '11434';
+  } catch {
+    return false;
+  }
+}
+
+function providerConfig(value) {
+  if (!isObj(value) || !isStr(value.baseUrl, 2000) || !value.baseUrl.trim()) {
+    throw new Error('A valid provider base URL is required');
+  }
+  let url;
+  try {
+    url = new URL(value.baseUrl);
+  } catch {
+    throw new Error('The provider base URL is invalid');
+  }
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error('The provider URL must use HTTP or HTTPS');
+  }
+  return {
+    ...value,
+    baseUrl: value.baseUrl.trim(),
+    apiKey: isStr(value.apiKey, 10000) ? value.apiKey : '',
+    headers: isObj(value.headers) ? value.headers : {}
+  };
 }
 
 function headersFor(provider) {
@@ -166,6 +199,13 @@ async function runStream(cfg, { signal, onEvent }) {
   const forwarded = mapped.tools
     .filter((t) => advertised.has(t.function.name))
     .map((t) => ({ type: 'function', function: t.function }));
+  const agent = data.agents.find((item) => item.id === cfg.agentId);
+  if (agent?.webSearch === true && advertised.has(webSearch.TOOL.function.name)) {
+    forwarded.push(webSearch.TOOL);
+  }
+  if (agent?.computerControl === true) {
+    forwarded.push(...computerControl.TOOLS.filter((tool) => advertised.has(tool.function.name)));
+  }
   if (forwarded.length) payload.tools = forwarded;
 
   const url = `${baseUrl(provider)}/chat/completions`;
@@ -297,18 +337,28 @@ async function runWithToolResult(cfg, { signal, onEvent }) {
 /* ------------------------------------------------------------------ *
  * Model listing + connection tests
  * ------------------------------------------------------------------ */
-async function listModels({ providerId }) {
-  const data = store.get();
-  const provider = data.providers.find((p) => p.id === providerId);
-  if (!provider) throw new Error('Provider not found');
-  const res = await fetch(`${baseUrl(provider)}/models`, { headers: headersFor(provider) });
+async function listModels({ providerId, provider: draft } = {}) {
+  let provider;
+  if (providerId) {
+    provider = store.get().providers.find((p) => p.id === providerId);
+    if (!provider) throw new Error('Provider not found');
+  } else {
+    provider = providerConfig(draft);
+  }
+  const url = isOllama(provider)
+    ? `${baseUrl(provider).replace(/\/v1$/i, '')}/api/tags`
+    : `${baseUrl(provider)}/models`;
+  const res = await fetch(url, { headers: headersFor(provider) });
   if (!res.ok) throw new Error(friendlyHttpError(res.status, await bodyText(res)));
-  const json = await res.json().catch(() => ({}));
-  const list = (json.data || json.models || []).map((m) => ({
-    id: m.id || m.name || m.model,
-    name: m.display_name || m.name || m.id
-  })).filter((m) => m.id);
-  return list;
+  const json = await res.json();
+  const entries = Array.isArray(json.data) ? json.data : json.models;
+  if (!Array.isArray(entries)) throw new Error('The provider returned an unexpected model list');
+  return entries.map((model) => {
+    if (!isObj(model)) return null;
+    const id = model.id || model.model || model.name;
+    if (typeof id !== 'string' || !id) return null;
+    return { id, name: model.display_name || model.name || model.id || id };
+  }).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 async function testProvider({ providerId }) {
@@ -316,12 +366,8 @@ async function testProvider({ providerId }) {
   const provider = data.providers.find((p) => p.id === providerId);
   if (!provider) throw new Error('Provider not found');
   const started = Date.now();
-  const url = `${baseUrl(provider)}/models`;
-  const res = await fetch(url, { headers: headersFor(provider) });
-  const ms = Date.now() - started;
-  if (!res.ok) throw new Error(friendlyHttpError(res.status, await bodyText(res)));
-  const json = await res.json().catch(() => ({}));
-  return { ok: true, ms, count: (json.data || json.models || []).length };
+  const models = await listModels({ providerId });
+  return { ok: true, ms: Date.now() - started, count: models.length };
 }
 
 async function serverRequest(conn, method, params, { timeoutMs = 15000, sessionId } = {}) {

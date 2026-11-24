@@ -52,6 +52,7 @@ function install(overrides = {}) {
       createFromBuffer: (buf) => ({
         isEmpty: () => buf.length === 0,
         getSize: () => ({ width: 200, height: 100 }),
+        resize: () => ({ toDataURL: () => 'data:image/png;base64,MOCK' }),
         crop: () => ({ resize: () => ({ toDataURL: () => 'data:image/png;base64,MOCK' }) })
       })
     },

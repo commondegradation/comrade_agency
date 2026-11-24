@@ -1,7 +1,7 @@
 {
   "name": "comrade-agency",
   "productName": "Comrade Agency",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Comrade Agency — desktop chat app for AI agents with providers, MCP connections and single-file code artifacts.",
   "main": "src/main/main.js",
   "author": {
@@ -20,7 +20,9 @@
     "dist": "npm run dist:mac && npm run dist:win"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.26.0"
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "mammoth": "^1.13.0",
+    "pdfjs-dist": "^4.10.38"
   },
   "devDependencies": {
     "electron": "^29.4.6",

@@ -165,6 +165,112 @@ for line in sys.stdin:
 
   const safeName = (raw) => (String(raw || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 48) || 'tool');
 
+  const WEB_SEARCH_TOOL = {
+    type: 'function',
+    function: {
+      name: 'web_search',
+      description: 'Search the public web when current information or external references are needed. Returns titles, snippets, and source URLs.',
+      parameters: {
+        type: 'object',
+        properties: { query: { type: 'string', description: 'A focused web search query.' } },
+        required: ['query'],
+        additionalProperties: false
+      }
+    }
+  };
+
+  const REMINDER_TOOLS = [
+    {
+      type: 'function',
+      function: {
+        name: 'create_reminder',
+        description: 'Create a one-time reminder when the user explicitly asks for one. dueAt must be an ISO 8601 date-time with a timezone offset. Ask a clarifying question instead of guessing an ambiguous time.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Short text shown in the notification.' },
+            dueAt: { type: 'string', description: 'Future ISO 8601 date-time with timezone offset.' }
+          },
+          required: ['title', 'dueAt'],
+          additionalProperties: false
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'list_reminders',
+        description: 'List the user’s pending one-time reminders.',
+        parameters: { type: 'object', properties: {}, additionalProperties: false }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'cancel_reminder',
+        description: 'Cancel one of the user’s pending reminders by its id.',
+        parameters: {
+          type: 'object',
+          properties: { id: { type: 'string', description: 'Reminder id returned by list_reminders.' } },
+          required: ['id'],
+          additionalProperties: false
+        }
+      }
+    }
+  ];
+
+  const COMPUTER_CONTROL_TOOLS = [
+    {
+      type: 'function',
+      function: {
+        name: 'run_terminal_command',
+        description: 'Run one shell command on this computer. The user must approve the exact command and working directory before it runs.',
+        parameters: {
+          type: 'object',
+          properties: {
+            command: { type: 'string', description: 'Exact shell command, maximum 4000 characters.' },
+            cwd: { type: 'string', description: 'Optional working directory; defaults to the user home directory.' }
+          },
+          required: ['command'],
+          additionalProperties: false
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'get_app_settings',
+        description: 'Read Comrade Agency interface settings.',
+        parameters: { type: 'object', properties: {}, additionalProperties: false }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'update_app_settings',
+        description: 'Request changes to allowlisted Comrade Agency interface settings. The user must approve each change.',
+        parameters: {
+          type: 'object',
+          properties: {
+            settings: {
+              type: 'object',
+              properties: {
+                locale: { type: 'string', enum: ['ru', 'en'] },
+                theme: { type: 'string', enum: ['light', 'dark'] },
+                showThinking: { type: 'boolean' },
+                autoOpenArtifact: { type: 'boolean' },
+                sidebarWidth: { type: 'number', minimum: 240, maximum: 420 }
+              },
+              additionalProperties: false
+            }
+          },
+          required: ['settings'],
+          additionalProperties: false
+        }
+      }
+    }
+  ];
+
   function toolsForConnections(connections, ids) {
     const tools = [];
     const map = {};
@@ -316,6 +422,9 @@ for line in sys.stdin:
 
   window.Mcp = {
     toolsForConnections,
+    WEB_SEARCH_TOOL,
+    REMINDER_TOOLS,
+    COMPUTER_CONTROL_TOOLS,
     connect,
     test,
     callTool,

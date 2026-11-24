@@ -8,6 +8,8 @@
   const S = window.S;
 
   const App = {};
+  let lastScreenKey = null;
+  let screenEnterFrame = 0;
 
   window.TOAST = (message, kind = 'info') => {
     const root = U.qs('#toast-root');
@@ -28,6 +30,10 @@
   App.refresh = () => {
     const { data } = S;
     const hasSetup = data.providers.length > 0 && data.agents.length > 0;
+    const screenKey = `${S.route}:${S.route === 'chat' ? data.activeChatId || '' : ''}`;
+    const initialScreen = lastScreenKey === null && hasSetup;
+    const animateScreen = lastScreenKey !== null && screenKey !== lastScreenKey;
+    lastScreenKey = hasSetup ? screenKey : null;
     const setup = U.qs('#view-setup');
     const main = U.qs('#view-main');
 
@@ -47,23 +53,41 @@
     const composerHost = U.qs('#chat-composer-host');
     const artifactPane = U.qs('#artifact-pane');
 
+    if (screenEnterFrame) {
+      cancelAnimationFrame(screenEnterFrame);
+      screenEnterFrame = 0;
+    }
     if (S.route === 'chat') {
       chatPane.classList.remove('page-mode');
       window.Views.renderChat();
       window.Views.renderSidebar();
       window.Views.renderArtifactPane();
-      U.qs('#sidebar').classList.remove('hidden');
       document.body.classList.toggle('artifact-open', S.artifact.open);
     } else {
       chatPane.classList.add('page-mode');
       composerHost.innerHTML = '';
       artifactPane.classList.add('hidden');
-      U.qs('#sidebar').classList.remove('hidden');
       document.body.classList.remove('artifact-open');
       if (S.route === 'providers') window.Views.renderProviders();
       else if (S.route === 'connections') window.Views.renderConnections();
+      else if (S.route === 'artifacts') window.Views.renderArtifactLibrary();
       else if (S.route === 'settings') window.Views.renderSettings();
       window.Views.renderSidebar();
+    }
+
+    if (animateScreen || initialScreen) {
+      const animationClass = animateScreen ? 'screen-enter' : 'initial-enter';
+      const animationName = animateScreen ? 'screen-enter' : 'pane-in';
+      chatPane.classList.remove('screen-enter', 'initial-enter');
+      chatPane.onanimationend = (event) => {
+        if (event.target === chatPane && event.animationName === animationName) {
+          chatPane.classList.remove(animationClass);
+        }
+      };
+      screenEnterFrame = requestAnimationFrame(() => {
+        screenEnterFrame = 0;
+        chatPane.classList.add(animationClass);
+      });
     }
   };
 
@@ -80,19 +104,35 @@
 
   App.applySidebarWidth = () => {
     const w = Number(S.data.ui.sidebarWidth) || 300;
-    U.qs('#sidebar').style.width = `${w}px`;
+    const collapsed = Boolean(S.data.ui.sidebarCollapsed);
+    document.body.classList.toggle('sidebar-collapsed', collapsed);
+    U.qs('#sidebar').style.width = `${collapsed ? 68 : w}px`;
+    const toggle = U.qs('#btn-sidebar-toggle');
+    toggle.textContent = collapsed ? '›' : '‹';
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    toggle.setAttribute('aria-label', window.I18n.t(collapsed ? 'Expand sidebar' : 'Collapse sidebar'));
+    toggle.title = window.I18n.t(collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+  };
+
+  App.applyTheme = () => {
+    document.documentElement.dataset.theme = S.data.ui.theme === 'dark' ? 'dark' : 'light';
   };
 
   /* ================================================================== *
    * Actions
    * ================================================================== */
-  App.sendFromComposer = () => {
+  App.sendFromComposer = async () => {
     const ta = U.qs('#composer-input');
     if (!ta) return;
     const text = ta.value;
-    ta.value = '';
-    ta.style.height = 'auto';
-    window.ChatRT.send(text, []);
+    const sent = await window.ChatRT.send(text, window.Views.composerFiles());
+    if (!sent) return;
+    const currentInput = U.qs('#composer-input');
+    if (currentInput) {
+      currentInput.value = '';
+      currentInput.style.height = 'auto';
+    }
+    window.Views.clearComposerFiles();
   };
 
   App.openAgentEditor = (id) => window.Views.openAgentEditor(id);
@@ -104,24 +144,51 @@
     if (!chat) return;
     const art = S.artifactById(chat.id, artifactId);
     if (!art) return;
-    S.artifact = { open: true, key: { chatId: chat.id, id: art.id }, tab: art.mode === 'html' ? 'preview' : 'code', live: true };
+    S.artifact = {
+      open: true,
+      key: { chatId: chat.id, id: art.id },
+      tab: art.mode === 'html' || art.mode === 'markdown' ? 'preview' : 'code',
+      live: true
+    };
     window.Views.renderArtifactPane();
     window.Views.renderChat();
     document.body.classList.add('artifact-open');
   };
 
-  App.saveArtifact = async () => {
-    const art = window.Views.currentArtifact();
+  App.openLibraryArtifact = (chatId, artifactId) => {
+    if (!S.artifactById(chatId, artifactId)) return;
+    S.openChat(chatId);
+    App.openArtifact(artifactId);
+  };
+
+  App.downloadArtifact = async (art, name = art?.name) => {
     if (!art) return;
-    const res = await window.comrade.files.save({ name: art.name, content: art.code, filterName: art.label, ext: art.ext });
-    if (res.ok) window.TOAST(`Saved ${art.name}`);
+    try {
+      const res = await window.comrade.files.save({
+        name,
+        content: art.code,
+        filterName: art.label,
+        ext: art.ext
+      });
+      if (res.ok) window.TOAST(`Saved ${name}`);
+    } catch (error) {
+      window.TOAST(error.message || String(error), 'error');
+    }
+  };
+
+  App.saveArtifact = async () => {
+    await App.downloadArtifact(window.Views.currentArtifact());
   };
 
   App.chatMenu = (chatId, anchor) => {
     const chat = S.chat(chatId);
     if (!chat) return;
     const items = [
-      { label: 'New chat', run: () => S.newChat(chat.agentId) },
+      { label: 'New chat', run: () => S.newChat(chat.agentId, { projectId: chat.projectId }) },
+      ...S.data.projects.map((project) => ({
+        label: `${window.I18n.t(chat.projectId === project.id ? 'Remove from project' : 'Move to project')}: ${project.name}`,
+        run: () => S.moveChatToProject(chatId, chat.projectId === project.id ? null : project.id)
+      })),
       {
         label: 'Rename…',
         run: () => {
@@ -135,11 +202,29 @@
     showMenu(anchor, items);
   };
 
+  App.projectMenu = (projectId, anchor) => {
+    const project = S.project(projectId);
+    if (!project) return;
+    showMenu(anchor, [
+      { label: 'Open project', run: () => window.Views.openProjectWorkspace(projectId) },
+      { label: 'Edit project', run: () => window.Views.openProjectEditor(projectId) },
+      {
+        label: 'Delete project',
+        danger: true,
+        run: () => {
+          if (!confirm(`Delete project "${project.name}"? Chats will remain in All chats.`)) return;
+          S.deleteProject(projectId);
+          window.TOAST('Project deleted');
+        }
+      }
+    ]);
+  };
+
   App.agentMenu = (anchor) => {
     const agent = S.activeAgent();
     if (!agent) return;
     showMenu(anchor, [
-      { label: 'New chat', run: () => S.newChat(agent.id) },
+      { label: 'New chat', run: () => S.newChat(agent.id, { projectId: S.activeChat()?.projectId }) },
       { label: 'Edit agent', run: () => App.openAgentEditor(agent.id) },
       { label: 'Providers', run: () => S.openRoute('providers') },
       { label: 'Delete agent', run: () => S.deleteAgent(agent.id), danger: true }
@@ -175,7 +260,32 @@
    * Global events
    * ================================================================== */
   function bindGlobal() {
+    window.comrade.reminders.onDue((reminder) => {
+      window.TOAST(`${window.I18n.t('Reminder')}: ${reminder.title}`);
+    });
+    window.comrade.reminders.onOpen((chatId) => {
+      if (S.chat(chatId)) S.openChat(chatId);
+    });
+
     document.addEventListener('click', (e) => {
+      const libraryOpen = e.target.closest('[data-library-artifact-open]');
+      if (libraryOpen) {
+        App.openLibraryArtifact(libraryOpen.dataset.chatId, libraryOpen.dataset.libraryArtifactOpen);
+        return;
+      }
+      const libraryDownload = e.target.closest('[data-library-artifact-download]');
+      if (libraryDownload) {
+        const chatId = libraryDownload.dataset.chatId;
+        const artifactId = libraryDownload.dataset.libraryArtifactDownload;
+        const art = S.artifactById(chatId, artifactId);
+        if (!art) return;
+        const dot = art.name.lastIndexOf('.');
+        const name = dot > 0
+          ? `${art.name.slice(0, dot)}-v${art.version}${art.name.slice(dot)}`
+          : `${art.name}-v${art.version}.${art.ext}`;
+        App.downloadArtifact(art, name);
+        return;
+      }
       const route = e.target.closest('[data-route]');
       if (route) {
         S.openRoute(route.dataset.route);
@@ -222,9 +332,9 @@
           U.download('comrade-agency-export.json', JSON.stringify(S.data, null, 2), 'application/json');
           break;
         case 'reset-all':
-          if (confirm('Delete every provider, agent, chat and connection?')) {
+          if (confirm('Delete every provider, agent, chat, connection and reminder?')) {
             localStorage.clear();
-            window.comrade.store.set({ providers: [], agents: [], chats: [], connections: [], ui: S.data.ui }).then(() => location.reload());
+            window.comrade.store.set({ providers: [], agents: [], chats: [], reminders: [], connections: [], ui: S.data.ui }).then(() => location.reload());
           }
           break;
         default:
@@ -259,6 +369,12 @@
     });
 
     U.qs('#btn-new-agent').onclick = () => App.openAgentEditor(null);
+    U.qs('#btn-sidebar-toggle').onclick = () => {
+      S.data.ui.sidebarCollapsed = !S.data.ui.sidebarCollapsed;
+      S.persist();
+      App.applySidebarWidth();
+      window.Views.renderSidebar();
+    };
     U.qs('#btn-sidebar-providers').onclick = () => S.openRoute('providers');
     U.qs('#btn-sidebar-connections').onclick = () => S.openRoute('connections');
 
@@ -322,13 +438,8 @@
     const p = S.provider(id);
     if (!p) return 'Provider missing';
     try {
-      const res = await fetch(`${p.baseUrl.replace(/\/+$/, '')}/models`, {
-        headers: { Authorization: p.apiKey ? `Bearer ${p.apiKey}` : '' }
-      });
-      if (!res.ok) return `Failed: HTTP ${res.status} ${res.statusText}`;
-      const json = await res.json();
-      const n = (json.data || json.models || []).length;
-      return `OK — reachable, ${n} models available`;
+      const models = await window.comrade.ai.listModels({ providerId: id });
+      return `OK — reachable, ${models.length} models available`;
     } catch (err) {
       return `Failed: ${err.message}`;
     }
@@ -366,6 +477,7 @@
     document.documentElement.classList.add(`platform-${info.platform}`);
 
     await S.load();
+    App.applyTheme();
     window.I18n.init();
 
     // pick an existing conversation on launch
@@ -389,8 +501,13 @@
     App.refresh();
 
     const artifacts = S.artifactForChat(S.data.activeChatId);
-    if (artifacts && S.data.ui.autoOpenArtifact) {
-      S.artifact = { open: true, key: { chatId: S.data.activeChatId, id: artifacts.id }, tab: artifacts.mode === 'html' ? 'preview' : 'code', live: true };
+    if (artifacts && artifacts.mode !== 'markdown' && S.data.ui.autoOpenArtifact) {
+      S.artifact = {
+        open: true,
+        key: { chatId: S.data.activeChatId, id: artifacts.id },
+        tab: artifacts.mode === 'html' ? 'preview' : 'code',
+        live: true
+      };
       App.refresh();
     }
   }

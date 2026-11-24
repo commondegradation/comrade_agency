@@ -18,7 +18,7 @@
     { id: 'mistral', name: 'Mistral', baseUrl: 'https://api.mistral.ai/v1', keyHint: '…', models: [['mistral-large-latest', 'Mistral Large'], ['codestral-latest', 'Codestral']] },
     { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', keyHint: 'sk-…', models: [['deepseek-chat', 'DeepSeek Chat'], ['deepseek-reasoner', 'DeepSeek Reasoner']] },
     { id: 'xai', name: 'xAI (Grok)', baseUrl: 'https://api.x.ai/v1', keyHint: 'xai-…', models: [['grok-4', 'Grok 4'], ['grok-3-mini', 'Grok 3 mini']] },
-    { id: 'ollama', name: 'Ollama (local)', baseUrl: 'http://localhost:11434/v1', keyHint: 'not required', models: [['llama3.1', 'Llama 3.1'], ['qwen2.5-coder', 'Qwen 2.5 Coder']] },
+    { id: 'ollama', name: 'Ollama (local)', apiType: 'ollama', baseUrl: 'http://localhost:11434/v1', keyHint: 'not required', models: [] },
     { id: 'custom', name: 'Custom / self-hosted', baseUrl: '', keyHint: '…', models: [] }
   ];
 
@@ -167,7 +167,7 @@
     el.classList.remove('hidden');
     el.innerHTML = `<div class="setup-inner">
       <div class="setup-hero">
-        <img class="setup-logo" src="assets/logo.png" alt="Comrade Agency" />
+        <img class="setup-logo" src="assets/logo.svg" alt="Comrade Agency" />
         <h1>Comrade Agency</h1>
         <p class="tagline">Agents that ship code. Bring your own models, hand out connections, and every reply that contains code becomes one runnable artifact.</p>
       </div>
@@ -231,6 +231,46 @@
         <h3>No providers yet</h3>
         <p>Start with a preset or point at your own OpenAI-compatible server.</p>
         <button class="btn primary" data-action="add-provider">+ Add provider</button>
+      </div>`}
+    </div>`;
+  };
+
+  V.renderArtifactLibrary = () => {
+    const el = U.qs('#chat-view');
+    const entries = [];
+    for (const chat of S.data.chats) {
+      for (const message of chat.messages || []) {
+        for (const artifact of message.artifacts || []) entries.push({ artifact, chat });
+      }
+    }
+    entries.sort((a, b) => (b.artifact.createdAt || 0) - (a.artifact.createdAt || 0));
+
+    const rows = entries.map(({ artifact, chat }) => {
+      const agent = S.agent(artifact.agentId || chat.agentId);
+      return `<article class="artifact-library-item">
+        <div class="artifact-library-kind">${U.esc((artifact.ext || 'file').toUpperCase())}</div>
+        <div class="artifact-library-info">
+          <div class="artifact-library-name">${U.esc(artifact.name)}</div>
+          <div class="artifact-library-meta">${U.esc(chat.title || 'Untitled')} · ${U.esc(agent?.name || 'Agent')} · v${artifact.version} · ${artifact.sizes?.lines || 0} ${window.I18n.t('lines')} · ${U.bytes(artifact.sizes?.bytes || 0)}</div>
+          <div class="artifact-library-date">${U.relTime(artifact.createdAt || chat.updatedAt)}</div>
+        </div>
+        <div class="artifact-library-actions">
+          <button class="btn ghost small" data-library-artifact-open="${U.esc(artifact.id)}" data-chat-id="${U.esc(chat.id)}">${window.I18n.t('Open')}</button>
+          <button class="btn primary small" data-library-artifact-download="${U.esc(artifact.id)}" data-chat-id="${U.esc(chat.id)}">${window.I18n.t('Download')}</button>
+        </div>
+      </article>`;
+    }).join('');
+
+    el.innerHTML = `<div class="page">
+      <div class="page-head">
+        <div>
+          <h2>${window.I18n.t('Artifact library')}</h2>
+          <p class="page-sub">${window.I18n.t('Generated files and saved responses from all chats.')}</p>
+        </div>
+      </div>
+      ${entries.length ? `<div class="artifact-library-list">${rows}</div>` : `<div class="blank-state">
+        <h3>${window.I18n.t('No artifacts yet.')}</h3>
+        <p>${window.I18n.t('Code and regular replies are collected here and can be downloaded.')}</p>
       </div>`}
     </div>`;
   };
@@ -300,12 +340,14 @@
           <label class="switch"><input type="checkbox" id="set-thinking" ${s.showThinking ? 'checked' : ''}/><span></span></label></label>
         <label class="row-toggle"><span>Open the artifact panel automatically</span>
           <label class="switch"><input type="checkbox" id="set-artifact" ${s.autoOpenArtifact ? 'checked' : ''}/><span></span></label></label>
+        <label class="row-toggle"><span>Dark theme</span>
+          <label class="switch"><input type="checkbox" id="set-theme" ${s.theme === 'dark' ? 'checked' : ''}/><span></span></label></label>
         <label class="row-toggle"><span>Sidebar width</span>
           <input type="range" id="set-sidebar" min="240" max="420" value="${s.sidebarWidth}" /></label>
       </div>
       <div class="settings-block">
         <h4>Data</h4>
-        <p class="muted small">Providers, agents, chats and connections live in a single JSON file.</p>
+        <p class="muted small">Providers, agents, chats, reminders and connections live in a single JSON file.</p>
         <div class="row-actions">
           <button class="btn ghost" data-action="reveal-store">Show data file</button>
           <button class="btn ghost" data-action="export-store">Export JSON</button>
@@ -319,7 +361,7 @@
       </div>
       <div class="settings-block danger-zone">
         <h4>Reset</h4>
-        <p class="muted small">Deletes every provider, agent, chat and connection from this machine.</p>
+        <p class="muted small">Deletes every provider, agent, chat, connection and reminder from this machine.</p>
         <button class="btn danger" data-action="reset-all">Delete all data</button>
       </div>
     </div>`;
@@ -343,6 +385,10 @@
       V.renderChat();
     };
     U.qs('#set-artifact').onchange = (e) => set('autoOpenArtifact', e.target.checked);
+    U.qs('#set-theme').onchange = (e) => {
+      set('theme', e.target.checked ? 'dark' : 'light');
+      window.App.applyTheme();
+    };
     U.qs('#set-sidebar').oninput = (e) => {
       set('sidebarWidth', Number(e.target.value));
       window.App.applySidebarWidth();

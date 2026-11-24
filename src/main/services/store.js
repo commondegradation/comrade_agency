@@ -3,6 +3,7 @@
 const { app } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const reminders = require('./reminders');
 
 const SCHEMA_VERSION = 1;
 
@@ -15,6 +16,8 @@ const defaults = () => ({
   providers: [],
   agents: [],
   chats: [],
+  projects: [],
+  reminders: [],
   connections: [],
   activeAgentId: null,
   activeChatId: null,
@@ -34,12 +37,22 @@ function normalize(raw) {
   data.providers = Array.isArray(data.providers) ? data.providers : [];
   data.agents = Array.isArray(data.agents) ? data.agents : [];
   data.chats = Array.isArray(data.chats) ? data.chats : [];
+  data.projects = Array.isArray(data.projects) ? data.projects.map((project) => ({
+    ...project,
+    icon: typeof project.icon === 'string' ? project.icon : '',
+    banner: typeof project.banner === 'string' ? project.banner : '',
+    context: typeof project.context === 'string' ? project.context : '',
+    systemPrompt: typeof project.systemPrompt === 'string' ? project.systemPrompt : '',
+    files: Array.isArray(project.files) ? project.files : []
+  })) : [];
+  data.reminders = reminders.normalize(data.reminders);
   data.connections = Array.isArray(data.connections) ? data.connections : [];
   data.settings = Object.assign(defaults().settings, data.settings || {});
 
   // Drop references to entities that no longer exist.
   const agentIds = new Set(data.agents.map((a) => a.id));
   const providerIds = new Set(data.providers.map((p) => p.id));
+  const projectIds = new Set(data.projects.map((project) => project.id));
   for (const agent of data.agents) {
     if (!providerIds.has(agent.providerId)) {
       const p = data.providers[0];
@@ -51,6 +64,9 @@ function normalize(raw) {
       : [];
   }
   data.chats = data.chats.filter((c) => agentIds.has(c.agentId));
+  data.chats.forEach((chat) => {
+    if (chat.projectId && !projectIds.has(chat.projectId)) chat.projectId = null;
+  });
   data.connections = data.connections.map((c) => ({
     enabled: true,
     tools: [],
@@ -100,13 +116,14 @@ function get() {
 }
 
 function set(value) {
-  cache = normalize(value);
+  const next = normalize(value);
   const file = filePath();
   fs.mkdirSync(path.dirname(file), { recursive: true });
   try {
     if (fs.existsSync(file)) fs.copyFileSync(file, backupPath());
   } catch { /* best effort */ }
-  atomicWrite(file, cache);
+  atomicWrite(file, next);
+  cache = next;
   return { ok: true };
 }
 

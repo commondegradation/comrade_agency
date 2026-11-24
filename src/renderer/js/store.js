@@ -12,6 +12,8 @@
     providers: [],
     agents: [],
     chats: [],
+    projects: [],
+    reminders: [],
     connections: [],
     activeAgentId: null,
     activeChatId: null,
@@ -20,7 +22,9 @@
       showThinking: true,
       autoOpenArtifact: true,
       artifactTab: 'preview',
-      sidebarWidth: 300
+      sidebarWidth: 300,
+      sidebarCollapsed: false,
+      theme: 'light'
     }
   });
 
@@ -68,11 +72,13 @@
   S.provider = (id) => S.data.providers.find((p) => p.id === id) || null;
   S.agent = (id) => S.data.agents.find((a) => a.id === id) || null;
   S.chat = (id) => S.data.chats.find((c) => c.id === id) || null;
+  S.project = (id) => S.data.projects.find((project) => project.id === id) || null;
   S.connection = (id) => S.data.connections.find((c) => c.id === id) || null;
   S.activeAgent = () => S.agent(S.data.activeAgentId);
   S.activeChat = () => S.chat(S.data.activeChatId);
 
   S.agentChats = (agentId) => S.data.chats.filter((c) => c.agentId === agentId);
+  S.projectChats = (projectId) => S.data.chats.filter((c) => c.projectId === projectId);
 
   S.agentConnections = (agent) => {
     if (!agent) return [];
@@ -82,7 +88,44 @@
 
   S.toolsForAgent = (agent) => {
     const conns = S.agentConnections(agent);
-    return window.Mcp.toolsForConnections(conns, null);
+    const result = window.Mcp.toolsForConnections(conns, null);
+    for (const tool of window.Mcp.REMINDER_TOOLS) {
+      const name = tool.function.name;
+      const label = {
+        create_reminder: S.data.ui.locale === 'en' ? 'Set a reminder' : 'Поставить напоминание',
+        list_reminders: S.data.ui.locale === 'en' ? 'List reminders' : 'Список напоминаний',
+        cancel_reminder: S.data.ui.locale === 'en' ? 'Cancel a reminder' : 'Отменить напоминание'
+      }[name];
+      result.tools.push(tool);
+      result.map[name] = {
+        reminder: true,
+        operation: name,
+        connection: { title: S.data.ui.locale === 'en' ? 'Reminders' : 'Напоминания' },
+        tool: { name: label }
+      };
+    }
+    if (agent?.webSearch === true) {
+      const tool = window.Mcp.WEB_SEARCH_TOOL;
+      result.tools.push(tool);
+      result.map[tool.function.name] = {
+        webSearch: true,
+        connection: { title: 'DuckDuckGo' },
+        tool: { name: S.data.ui.locale === 'en' ? 'Search the web' : 'Поиск в интернете' }
+      };
+    }
+    if (agent?.computerControl === true) {
+      for (const tool of window.Mcp.COMPUTER_CONTROL_TOOLS) {
+        const name = tool.function.name;
+        result.tools.push(tool);
+        result.map[name] = {
+          computerControl: true,
+          operation: name,
+          connection: { title: S.data.ui.locale === 'en' ? 'This computer' : 'Этот компьютер' },
+          tool: { name: name.replaceAll('_', ' ') }
+        };
+      }
+    }
+    return result;
   };
 
   S.modelLabel = (agent) => {
@@ -108,10 +151,11 @@
     }
   };
 
-  S.newChat = (agentId, { silent = false } = {}) => {
+  S.newChat = (agentId, { silent = false, projectId = null } = {}) => {
     const chat = {
       id: U.uid('chat'),
       agentId,
+      projectId: S.project(projectId)?.id || null,
       title: 'New chat',
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -126,6 +170,24 @@
       S.emit('change');
     }
     return chat;
+  };
+
+  S.moveChatToProject = (chatId, projectId) => {
+    const chat = S.chat(chatId);
+    if (!chat || (projectId && !S.project(projectId))) return;
+    chat.projectId = projectId || null;
+    S.persist();
+    S.emit('change');
+  };
+
+  S.deleteProject = (projectId) => {
+    if (!S.project(projectId)) return;
+    S.data.projects = S.data.projects.filter((project) => project.id !== projectId);
+    S.data.chats.forEach((chat) => {
+      if (chat.projectId === projectId) chat.projectId = null;
+    });
+    S.persist();
+    S.emit('change');
   };
 
   S.ensureChat = (agentId) => {

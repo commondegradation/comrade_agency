@@ -8,6 +8,8 @@
   const S = window.S;
 
   const V = {};
+  let composerChatId = null;
+  let composerFiles = [];
 
   /* ================================================================== *
    * Shared bits
@@ -23,14 +25,39 @@
     return `<span class="avatar ${size}">${U.esc(U.initials(agent.name))}</span>`;
   };
 
+  V.projectIconHTML = (project, size = 'sm') => {
+    if (/^data:image\/(png|jpeg|webp|gif);base64,[a-zA-Z0-9+/=]+$/.test(project.icon || '')) {
+      return `<img class="project-icon ${size}" src="${U.esc(project.icon)}" alt="" />`;
+    }
+    return `<span class="project-icon ${size} project-icon-fallback">${U.esc(U.initials(project.name || 'Project'))}</span>`;
+  };
+
   V.providerName = (id) => S.provider(id)?.name || 'No provider';
 
   /* ================================================================== *
    * Sidebar
    * ================================================================== */
   V.renderSidebar = () => {
+    const list = U.qs('#chat-list');
+    if (S.data.ui.sidebarCollapsed) {
+      const activeProjectId = S.activeChat()?.projectId;
+      const projects = S.data.projects.map((project) => `<button class="project-avatar-item ${project.id === activeProjectId ? 'active' : ''}"
+        data-project="${U.esc(project.id)}" title="${U.esc(project.name)}" aria-label="${U.esc(project.name)}">
+        ${V.projectIconHTML(project, 'md')}
+      </button>`).join('');
+      const agents = S.data.agents.map((agent) => {
+        const active = agent.id === S.data.activeAgentId;
+        return `<button class="agent-avatar-item ${active ? 'active' : ''}" data-agent="${U.esc(agent.id)}" title="${U.esc(agent.name)}" aria-label="${U.esc(agent.name)}">
+          ${V.avatarHTML(agent, 'md')}
+        </button>`;
+      }).join('');
+      list.innerHTML = `${projects ? `<div class="collapsed-projects">${projects}</div>${agents ? '<div class="collapsed-sidebar-divider"></div>' : ''}` : ''}${agents}`;
+      return;
+    }
+
     const q = (U.qs('#chat-search')?.value || '').toLowerCase().trim();
     const chat = S.activeChat();
+    const projects = S.data.projects.filter((project) => !q || String(project.name || '').toLowerCase().includes(q));
     const visible = S.data.chats.filter((c) => {
       if (S.streaming && window.ChatRT.Live.chatId === c.id) return true;
       const agent = S.agent(c.agentId);
@@ -38,11 +65,23 @@
       return !q || hay.includes(q);
     });
 
-    const list = U.qs('#chat-list');
+    const projectSection = `<div class="sidebar-section">
+      <div class="sidebar-section-head"><span>Projects</span><button class="mini-btn" data-new-project title="Create project">+</button></div>
+      <div class="project-list">${projects.map((project) => `<div class="project-row">
+        <button class="project-item" data-project="${U.esc(project.id)}" title="${U.esc(project.name)}">
+          ${V.projectIconHTML(project)}
+          <span class="project-item-name">${U.esc(project.name)}</span>
+          <span class="project-item-count">${S.projectChats(project.id).length}</span>
+        </button>
+        <button class="project-menu" data-project-menu="${U.esc(project.id)}" title="Project options" aria-label="Project options">⋯</button>
+      </div>`).join('') || `<div class="project-empty">${q ? 'No matching projects.' : 'No projects yet.'}</div>`}</div>
+    </div>
+    <div class="sidebar-section-head all-chats-head"><span>All chats</span></div>`;
+
     if (!visible.length) {
-      list.innerHTML = `<div class="empty-note">${S.data.chats.length ? 'Nothing matches.' : 'No agents yet.<br/>Hit “+ New Agent”.'}</div>`;
+      list.innerHTML = `${projectSection}<div class="empty-note">${S.data.chats.length ? 'Nothing matches.' : 'No agents yet.<br/>Hit “+ New Agent”.'}</div>`;
     } else {
-      list.innerHTML = visible
+      list.innerHTML = `${projectSection}<div class="chat-items">${visible
         .map((c) => {
           const agent = S.agent(c.agentId);
           const last = c.messages[c.messages.length - 1];
@@ -62,7 +101,7 @@
             <span class="chat-item-menu" data-chat-menu="${c.id}" title="Chat options">⋯</span>
           </button>`;
         })
-        .join('');
+        .join('')}</div>`;
     }
     U.qs('#providers-count').textContent = S.data.providers.length ? `${S.data.providers.length}` : '';
     U.qs('#connections-count').textContent = S.data.connections.length ? `${S.data.connections.length}` : '';
@@ -73,6 +112,26 @@
   V.bindSidebar = () => {
     const list = U.qs('#chat-list');
     list.addEventListener('click', (e) => {
+      if (e.target.closest('[data-new-project]')) {
+        window.Views.openProjectEditor();
+        return;
+      }
+      const projectMenu = e.target.closest('[data-project-menu]');
+      if (projectMenu) {
+        e.stopPropagation();
+        window.App.projectMenu(projectMenu.dataset.projectMenu, projectMenu);
+        return;
+      }
+      const projectItem = e.target.closest('[data-project]');
+      if (projectItem) {
+        window.Views.openProjectWorkspace(projectItem.dataset.project);
+        return;
+      }
+      const agentItem = e.target.closest('[data-agent]');
+      if (agentItem) {
+        S.openAgent(agentItem.dataset.agent);
+        return;
+      }
       const menu = e.target.closest('[data-chat-menu]');
       if (menu) {
         e.stopPropagation();
@@ -133,7 +192,7 @@
   function artifactCardHTML(a) {
     const open = S.artifact.open && S.artifact.key && S.artifact.key.id === a.id;
     return `<button class="artifact-card ${open ? 'active' : ''}" data-open-artifact="${a.id}">
-      <span class="artifact-card-icon">{ }</span>
+      <span class="artifact-card-icon">${U.esc((a.ext || '{}').toUpperCase().slice(0, 4))}</span>
       <span class="artifact-card-body">
         <span class="artifact-card-name">${U.esc(a.name)}</span>
         <span class="artifact-card-meta">Artifact v${a.version} · ${a.label} · ${a.sizes.lines} lines · ${U.bytes(a.sizes.bytes)}</span>
@@ -142,20 +201,20 @@
     </button>`;
   }
 
-  function assistantHTML(m, chat, live) {
+  function assistantHTML(m, chat, live, grouped) {
     const agent = S.agent(m.authorId) || S.agent(chat.agentId);
     const streaming = m.status === 'streaming';
     const text = live ? window.ChatRT.Live.text : m.text;
     const isError = m.status === 'error' || m.status === 'stopped';
-    const cls = `msg assistant ${live ? 'live' : ''} ${isError ? 'error' : ''}`;
+    const cls = `msg assistant ${grouped ? 'grouped' : ''} ${live ? 'live' : ''} ${isError ? 'error' : ''}`;
     return `<div class="${cls}" data-msg="${m.id}">
-      ${V.avatarHTML(agent, 'md')}
+      <div class="msg-avatar">${grouped ? '' : V.avatarHTML(agent, 'md')}</div>
       <div class="msg-col">
-        <div class="msg-meta">
+        ${grouped ? '' : `<div class="msg-meta">
           <span class="msg-author">${U.esc(agent ? agent.name : 'Agent')}</span>
           <span class="msg-model">${U.esc(S.modelLabel(agent))}</span>
           <span class="msg-time">${U.time(m.createdAt)}</span>
-        </div>
+        </div>`}
         ${reasoningHTML(m, live)}
         ${live ? V.liveToolRuns() : (m.toolRuns || []).map(toolRunHTML).join('')}
         ${text ? `<div class="msg-text ${streaming ? 'streaming' : ''}">${U.md(stripFencesWhileStreaming(text, streaming))}${streaming ? '<span class="caret"></span>' : ''}</div>` : ''}
@@ -178,14 +237,45 @@
     return text;
   }
 
-  function userHTML(m) {
-    return `<div class="msg user" data-msg="${m.id}">
+  function userHTML(m, grouped) {
+    return `<div class="msg user ${grouped ? 'grouped' : ''}" data-msg="${m.id}">
+      <div class="msg-avatar"></div>
       <div class="msg-col">
-        <div class="bubble">${U.md(m.text)}</div>
-        <div class="msg-meta right"><span class="msg-time">${U.time(m.createdAt)}</span></div>
+        ${grouped ? '' : `<div class="msg-meta"><span class="msg-author">${window.I18n.t('You')}</span><span class="msg-time">${U.time(m.createdAt)}</span></div>`}
+        ${m.text ? `<div class="msg-text">${U.md(m.text)}</div>` : ''}
+        ${(m.attachments || []).length ? `<div class="message-files">${m.attachments.map((file) => `
+          <div class="message-file"><span class="message-file-icon">↳</span><span class="message-file-name">${U.esc(file.name)}</span><span class="message-file-size">${U.bytes(file.size)}</span>
+          ${file.truncated ? `<span class="message-file-truncated">${window.I18n.t('truncated')}</span>` : ''}</div>`).join('')}</div>` : ''}
       </div>
     </div>`;
   }
+
+  function sameMessageGroup(previous, current, chat) {
+    if (!previous || previous.role !== current.role) return false;
+    if (current.role === 'assistant') {
+      const previousAuthor = previous.authorId || chat.agentId;
+      const currentAuthor = current.authorId || chat.agentId;
+      if (previousAuthor !== currentAuthor) return false;
+    }
+    const previousTime = Date.parse(previous.createdAt);
+    const currentTime = Date.parse(current.createdAt);
+    return Number.isFinite(previousTime) && Number.isFinite(currentTime) &&
+      currentTime >= previousTime && currentTime - previousTime <= 7 * 60 * 1000;
+  }
+
+  function composerFilesHTML() {
+    const container = U.qs('#composer-files');
+    if (!container) return;
+    container.innerHTML = composerFiles.map((file, index) => `
+      <div class="composer-file"><span>${U.esc(file.name)}</span><span class="composer-file-size">${U.bytes(file.size)}</span>
+      <button class="mini-btn" data-action="remove-attachment" data-file-index="${index}" title="${window.I18n.t('Remove attachment')}" aria-label="${window.I18n.t('Remove attachment')}">✕</button></div>`).join('');
+  }
+
+  V.clearComposerFiles = () => {
+    composerFiles = [];
+    composerFilesHTML();
+  };
+  V.composerFiles = () => composerFiles.slice();
 
   V.thinkingHTML = () => {
     const L = window.ChatRT.Live;
@@ -205,10 +295,14 @@
     const host = U.qs('#chat-composer-host');
     const agent = S.agent(S.data.activeAgentId);
     const chat = S.chat(S.data.activeChatId);
+    if ((chat?.id || null) !== composerChatId) {
+      composerChatId = chat?.id || null;
+      composerFiles = [];
+    }
 
     if (!agent) {
       view.innerHTML = `<div class="chat-empty">
-        <img class="empty-logo" src="assets/logo.png" alt="" />
+        <img class="empty-logo" src="assets/logo.svg" alt="" />
         <h2>No agents yet</h2>
         <p>Create your first agent, give it a name, an avatar and a system prompt.</p>
         <button class="btn primary" data-action="new-agent">+ New Agent</button>
@@ -236,10 +330,11 @@
     const messages = chat ? chat.messages : [];
     const body = messages.length
       ? messages
-          .map((m) => {
-            if (m.role === 'user') return userHTML(m);
+          .map((m, index) => {
+            const grouped = sameMessageGroup(messages[index - 1], m, chat);
+            if (m.role === 'user') return userHTML(m, grouped);
             const live = m.status === 'streaming' && window.ChatRT.Live.messageId === m.id;
-            return assistantHTML(m, chat, live);
+            return assistantHTML(m, chat, live, grouped);
           })
           .join('')
       : `<div class="chat-intro">
@@ -254,14 +349,17 @@
     const canSend = !S.streaming;
     host.innerHTML = `<div class="composer">
         ${S.agentConnections(agent).length ? `<div class="composer-tools">${S.agentConnections(agent).map((c) => `<span class="pill">${U.esc(c.title)}</span>`).join('')}</div>` : ''}
+        <div class="composer-files" id="composer-files"></div>
         <div class="composer-box">
           <textarea id="composer-input" rows="1" placeholder="${window.I18n.ru() ? 'Сообщение для' : 'Message'} ${U.esc(agent.name)}…" ${canSend ? '' : 'disabled'}></textarea>
           <div class="composer-side">
+            <button class="btn ghost small icon" data-action="attach" title="${window.I18n.t('Attach files')}" aria-label="${window.I18n.t('Attach files')}" ${canSend ? '' : 'disabled'}>＋</button>
             ${S.streaming ? '<button class="btn danger small" data-action="stop">Stop</button>' : '<button class="btn primary small send" data-action="send" title="Send (Enter)">Send</button>'}
           </div>
         </div>
         <div class="composer-hint">Enter to send · Shift+Enter for a new line · code replies become one artifact</div>
       </div>`;
+    composerFilesHTML();
     const ta = U.qs('#composer-input');
     if (ta) {
       autosize(ta);
@@ -371,15 +469,29 @@
       else if (action === 'new-agent') window.App.openAgentEditor(null);
       else if (action === 'edit-agent') window.App.openAgentEditor(S.data.activeAgentId);
       else if (action === 'new-chat-for-agent') {
-        S.newChat(S.data.activeAgentId);
+        S.newChat(S.data.activeAgentId, { projectId: S.activeChat()?.projectId });
       } else if (action === 'agent-menu') {
         window.App.agentMenu(e.target.closest('[data-action="agent-menu"]'));
       }
     });
-    U.qs('#chat-composer-host').addEventListener('click', (e) => {
+    U.qs('#chat-composer-host').addEventListener('click', async (e) => {
       const action = e.target.closest('[data-action]')?.dataset.action;
       if (action === 'send') window.App.sendFromComposer();
       else if (action === 'stop') window.ChatRT.stop();
+      else if (action === 'attach') {
+        try {
+          const files = await window.comrade.files.pickForChat();
+          const remaining = Math.max(0, 10 - composerFiles.length);
+          if (files.length > remaining) window.TOAST(window.I18n.t('You can attach up to 10 files.'), 'error');
+          composerFiles.push(...files.slice(0, remaining));
+          composerFilesHTML();
+        } catch (error) {
+          window.TOAST(error.message || String(error), 'error');
+        }
+      } else if (action === 'remove-attachment') {
+        composerFiles.splice(Number(e.target.closest('[data-file-index]').dataset.fileIndex), 1);
+        composerFilesHTML();
+      }
     });
   };
 
@@ -431,6 +543,11 @@
         });
         frame.srcdoc = doc;
       }
+      return;
+    }
+    if (S.artifact.tab === 'preview' && art.mode === 'markdown') {
+      body.dataset.previewKey = '';
+      body.innerHTML = `<div class="msg-text artifact-markdown">${U.md(art.code)}</div>`;
       return;
     }
     body.dataset.previewKey = '';

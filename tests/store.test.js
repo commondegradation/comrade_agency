@@ -1,10 +1,11 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const { install } = require('./helpers/mock-electron');
 
 // Install mock before requiring store (store requires electron)
-const { restore } = install();
+const { restore, tmp } = install();
 const store = require('../src/main/services/store');
 
 test('normalize fills defaults for empty input', () => {
@@ -13,10 +14,42 @@ test('normalize fills defaults for empty input', () => {
   assert.deepEqual(d.providers, []);
   assert.deepEqual(d.agents, []);
   assert.deepEqual(d.chats, []);
+  assert.deepEqual(d.projects, []);
+  assert.deepEqual(d.reminders, []);
   assert.deepEqual(d.connections, []);
   assert.equal(d.settings.density, 'cozy');
   assert.equal(d.settings.showThinking, true);
   assert.equal(d.settings.sidebarWidth, 300);
+});
+
+test('failed atomic write does not replace the in-memory store', () => {
+  store.set({ providers: [], agents: [], chats: [], reminders: [], connections: [] });
+  const before = store.get();
+  const renameSync = fs.renameSync;
+  fs.renameSync = () => { throw new Error('simulated write failure'); };
+  try {
+    assert.throws(() => store.set({ ...before, reminders: [{ id: 'r1' }] }), /simulated write failure/);
+  } finally {
+    fs.renameSync = renameSync;
+  }
+  assert.deepEqual(store.get().reminders, []);
+});
+
+test('normalize preserves project chats and clears dangling project references', () => {
+  const d = store.normalize({
+    agents: [{ id: 'a1', providerId: null, modelId: null, connectionIds: [] }],
+    projects: [{ id: 'p1', name: 'Research' }],
+    chats: [
+      { id: 'c1', agentId: 'a1', projectId: 'p1', messages: [] },
+      { id: 'c2', agentId: 'a1', projectId: 'missing', messages: [] }
+    ]
+  });
+  assert.equal(d.projects[0].context, '');
+  assert.equal(d.projects[0].icon, '');
+  assert.equal(d.projects[0].banner, '');
+  assert.deepEqual(d.projects[0].files, []);
+  assert.equal(d.chats[0].projectId, 'p1');
+  assert.equal(d.chats[1].projectId, null);
 });
 
 test('normalize preserves existing values', () => {
@@ -108,3 +141,4 @@ test('normalize handles provider without models array', () => {
 });
 
 restore();
+fs.rmSync(tmp, { recursive: true, force: true });

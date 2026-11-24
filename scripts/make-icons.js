@@ -28,7 +28,7 @@ app.whenReady().then(async () => {
   // frame so it stays legible on dark docks.
   const html = `<!DOCTYPE html><html><body style="margin:0;background:#fff">
     <div id="stage" style="position:relative;width:1024px;height:1024px;background:#fff;overflow:hidden">
-      <img id="logo" src="data:image/png;base64,${LOGO}" style="position:absolute;left:0;top:0;width:1024px;height:auto" />
+      <img id="logo" style="position:absolute;left:0;top:0;width:1024px;height:auto" />
     </div>
     <script>
       const img = document.getElementById('logo');
@@ -56,6 +56,9 @@ app.whenReady().then(async () => {
     </script></body></html>`;
 
   await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  await win.webContents.executeJavaScript(
+    `document.getElementById('logo').src = 'data:image/png;base64,${LOGO}'`
+  );
   const box = await win.webContents.executeJavaScript('window.ready');
   const objW = box.maxX - box.minX + 1;
   const objH = box.maxY - box.minY + 1;
@@ -121,4 +124,7 @@ app.whenReady().then(async () => {
   }
   console.log('icons written', { objW, objH, scale: scale.toFixed(3) });
   app.exit(0);
+}).catch((error) => {
+  console.error(error);
+  app.exit(1);
 });

@@ -18,10 +18,16 @@ contextBridge.exposeInMainWorld('comrade', {
   },
 
   dialog: {
-    image: () => ipcRenderer.invoke('dialog:image')
+    image: () => ipcRenderer.invoke('dialog:image'),
+    projectBanner: () => ipcRenderer.invoke('dialog:project-banner')
+  },
+
+  projects: {
+    pickFiles: () => ipcRenderer.invoke('project:files:pick')
   },
 
   files: {
+    pickForChat: () => ipcRenderer.invoke('chat:files:pick'),
     save: (opts) => ipcRenderer.invoke('file:save', opts),
     openPath: (p) => ipcRenderer.invoke('file:openPath', p),
     pathForFile: (file) => {
@@ -34,6 +40,7 @@ contextBridge.exposeInMainWorld('comrade', {
   },
 
   ai: {
+    listModels: (options) => ipcRenderer.invoke('ai:listModels', options),
     start: (payload) => ipcRenderer.invoke('ai:start', payload),
     cancel: (id) => ipcRenderer.invoke('ai:cancel', id),
     onChunk: listeners('ai:chunk')
@@ -46,6 +53,20 @@ contextBridge.exposeInMainWorld('comrade', {
     stdio: (id, spec, requests) => ipcRenderer.invoke('mcp:stdio', { id, spec, requests })
   },
 
+  computerControl: {
+    getSettings: (agentId) => ipcRenderer.invoke('computer:getSettings', { agentId }),
+    runTerminal: (agentId, command, cwd) => ipcRenderer.invoke('computer:runTerminal', { agentId, command, cwd }),
+    updateSettings: (agentId, settings) => ipcRenderer.invoke('computer:updateSettings', { agentId, settings })
+  },
+
   knowledge: { search: (query) => ipcRenderer.invoke('knowledge:search', query) },
+  web: { search: (agentId, query) => ipcRenderer.invoke('web:search', { agentId, query }) },
+  reminders: {
+    create: (reminder) => ipcRenderer.invoke('reminder:create', reminder),
+    list: () => ipcRenderer.invoke('reminder:list'),
+    cancel: (id) => ipcRenderer.invoke('reminder:cancel', id),
+    onDue: listeners('reminder:due'),
+    onOpen: listeners('reminder:open')
+  },
   onMenu: listeners('menu')
 });

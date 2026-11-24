@@ -22,7 +22,9 @@
       </div>`;
     const scrim = root.querySelector('.modal-backdrop');
     scrim.onclick = () => V.closeModal();
-    root.querySelector('[data-modal-close]').onclick = () => V.closeModal();
+    root.querySelectorAll('[data-modal-close]').forEach((button) => {
+      button.onclick = () => V.closeModal();
+    });
     if (onMount) onMount(root.querySelector('.modal'));
     return root;
   };
@@ -59,7 +61,7 @@
         <div class="modal-section-head">
           <span>Models</span>
           <div>
-            <button class="btn ghost small" id="pv-discover" type="button">Fetch from /models</button>
+            <button class="btn ghost small" id="pv-discover" type="button">Fetch models</button>
           </div>
         </div>
         <div class="model-editor model-head"><span>Model ID</span><span>Display name</span><span></span></div>
@@ -147,6 +149,8 @@
         U.qs('#pv-key', root).placeholder = preset.keyHint;
         p.name = U.qs('#pv-name', root).value;
         p.baseUrl = preset.baseUrl;
+        if (preset.apiType) p.apiType = preset.apiType;
+        else delete p.apiType;
         p.models = (preset.models || []).map(([id, name]) => ({ id, name }));
         if (preset.id === 'anthropic') U.qs('#pv-url', root).value = preset.baseUrl;
         drawModels();
@@ -166,11 +170,11 @@
       };
       try {
         const headers = JSON.parse(U.qs('#pv-headers', root).value || '{}');
-        const list = await fetchModels(temp, headers);
+        const list = await fetchModels({ ...temp, headers });
         let added = 0;
-        for (const m of list) {
-          if (!p.models.some((x) => x.id === m)) {
-            p.models.push({ id: m, name: m });
+        for (const model of list) {
+          if (!p.models.some((x) => x.id === model.id)) {
+            p.models.push(model);
             added++;
           }
         }
@@ -215,14 +219,8 @@
     };
   };
 
-  async function fetchModels(p, headers) {
-    const url = `${p.baseUrl.replace(/\/+$/, '')}/models`;
-    const res = await fetch(url, {
-      headers: { Authorization: p.apiKey ? `Bearer ${p.apiKey}` : '', ...headers }
-    });
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-    const json = await res.json();
-    return (json.data || json.models || []).map((m) => m.id).filter(Boolean).sort();
+  async function fetchModels(provider) {
+    return window.comrade.ai.listModels({ provider });
   }
 
   /* ================================================================== *
@@ -246,6 +244,8 @@
           providerId: firstProvider.id,
           modelId: firstProvider.models[0]?.id || '',
           connectionIds: [],
+          webSearch: false,
+          computerControl: false,
           temperature: 0.7
         };
     if (!a.connectionIds) a.connectionIds = [];
@@ -266,6 +266,14 @@
             ${fieldRow('Model', `<select class="input" id="ag-model"></select>`)}
           </div>
           ${fieldRow('System prompt', `<textarea class="input mono" id="ag-prompt" rows="9" placeholder="You are… You do… Tone, rules, what to refuse, how to format code.">${U.esc(a.systemPrompt)}</textarea>`, 'Everything here is prepended to every conversation.')}
+          <label class="row-toggle" for="ag-web-search">
+            <span><span class="field-label">Internet search (DuckDuckGo)</span><br/><span class="field-hint">Only used when needed; the search query is sent to DuckDuckGo.</span></span>
+            <span class="switch"><input type="checkbox" id="ag-web-search" ${a.webSearch === true ? 'checked' : ''}/><span></span></span>
+          </label>
+          <label class="row-toggle" for="ag-computer-control">
+            <span><span class="field-label">Control this computer</span><br/><span class="field-hint">Enables terminal commands and app settings. You will approve every action in a confirmation dialog.</span></span>
+            <span class="switch"><input type="checkbox" id="ag-computer-control" ${a.computerControl === true ? 'checked' : ''}/><span></span></span>
+          </label>
           <div class="modal-section">
             <div class="modal-section-head"><span>Connections (MCP)</span><button class="btn ghost small" id="ag-add-conn" type="button">Manage…</button></div>
             <div class="conn-pick">
@@ -371,6 +379,8 @@
     U.qs('#ag-save', root).onclick = () => {
       a.name = U.qs('#ag-name', root).value.trim();
       a.systemPrompt = U.qs('#ag-prompt', root).value;
+      a.webSearch = U.qs('#ag-web-search', root).checked;
+      a.computerControl = U.qs('#ag-computer-control', root).checked;
       if (!a.name) return window.TOAST('Give the agent a name', 'error');
       if (!a.providerId || !a.modelId) return window.TOAST('Pick a provider and a model', 'error');
       const isNew = !editing;
@@ -390,6 +400,204 @@
       window.TOAST(isNew ? S.data.ui.locale === 'en' ? `${a.name} joined the agency` : `Агент ${a.name} создан` : 'Agent saved');
       window.App.refresh();
     };
+  };
+
+  V.openProjectEditor = (projectId) => {
+    const editing = projectId ? S.project(projectId) : null;
+    const project = editing
+      ? JSON.parse(JSON.stringify(editing))
+      : { id: U.uid('project'), name: '', icon: '', banner: '', context: '', systemPrompt: '', files: [] };
+    const body = `
+      <div class="project-editor">
+        <div class="project-artwork">
+          <div class="project-icon-preview" id="project-icon-preview"></div>
+          <button class="btn ghost small block" id="project-upload-icon" type="button">Upload icon</button>
+          <button class="btn ghost small block" id="project-remove-icon" type="button">Remove icon</button>
+          <div class="project-banner-preview" id="project-banner-preview"></div>
+          <button class="btn ghost small block" id="project-upload-banner" type="button">Upload banner</button>
+          <button class="btn ghost small block" id="project-remove-banner" type="button">Remove banner</button>
+        </div>
+        <div class="project-fields">
+          ${fieldRow('Project name', `<input class="input big" id="project-name" value="${U.esc(project.name)}" maxlength="64" placeholder="Research" />`)}
+          ${fieldRow('Project context', `<textarea class="input mono" id="project-context" rows="5" maxlength="60000" placeholder="Background and reference notes for this project">${U.esc(project.context)}</textarea>`)}
+          ${fieldRow('Project system prompt', `<textarea class="input mono" id="project-prompt" rows="6" maxlength="20000" placeholder="Instructions specific to this project">${U.esc(project.systemPrompt)}</textarea>`)}
+          <div class="modal-section">
+            <div class="modal-section-head"><span>Project files</span><button class="btn ghost small" id="project-add-files" type="button">Add files</button></div>
+            <div class="field-hint">TXT, Markdown, code, PDF and DOCX · 8 MB max per file · up to 10 files</div>
+            <div class="project-file-list" id="project-file-list"></div>
+            <div class="field-hint" id="project-file-status" role="status"></div>
+          </div>
+        </div>
+      </div>`;
+    const root = V.modal(editing ? 'Edit project' : 'New project', body, {
+      wide: true,
+      footHTML: `${editing ? '<button class="btn ghost danger-text" id="project-delete" type="button">Delete project</button>' : ''}
+        <div class="spacer"></div>
+        <button class="btn ghost" data-modal-close>Cancel</button>
+        <button class="btn primary" id="project-save" type="button">${editing ? 'Save project' : 'Create project'}</button>`
+    });
+
+    const drawArtwork = () => {
+      U.qs('#project-icon-preview', root).innerHTML = V.projectIconHTML(project, 'lg');
+      U.qs('#project-banner-preview', root).innerHTML = /^data:image\/(png|jpeg|webp|gif);base64,[a-zA-Z0-9+/=]+$/.test(project.banner || '')
+        ? `<img src="${U.esc(project.banner)}" alt="" />`
+        : `<span>${window.I18n.t('Banner preview')}</span>`;
+    };
+    const setFileStatus = (message, isError = false) => {
+      const status = U.qs('#project-file-status', root);
+      status.textContent = message;
+      status.classList.toggle('danger-text', isError);
+    };
+    const drawFiles = () => {
+      const container = U.qs('#project-file-list', root);
+      container.innerHTML = project.files.length
+        ? project.files.map((file, index) => `<div class="project-file-row">
+            <span class="project-file-name" title="${U.esc(file.name)}">${U.esc(file.name)}${file.truncated ? ` · ${window.I18n.t('truncated')}` : ''}</span>
+            <span class="project-file-size">${U.bytes(file.size || 0)} · ${(file.text || '').length} chars</span>
+            <button class="mini-btn" data-project-file-remove="${index}" type="button" aria-label="Remove ${U.esc(file.name)}">×</button>
+          </div>`).join('')
+        : `<div class="muted small pad">${window.I18n.t('This project has no files yet.')}</div>`;
+      U.qsa('[data-project-file-remove]', root).forEach((button) => {
+        button.onclick = () => {
+          project.files.splice(Number(button.dataset.projectFileRemove), 1);
+          drawFiles();
+        };
+      });
+    };
+
+    drawArtwork();
+    drawFiles();
+    U.qs('#project-upload-icon', root).onclick = async () => {
+      try {
+        const icon = await window.comrade.dialog.image();
+        if (icon) { project.icon = icon; drawArtwork(); }
+      } catch (error) {
+        window.TOAST(error.message, 'error');
+      }
+    };
+    U.qs('#project-remove-icon', root).onclick = () => { project.icon = ''; drawArtwork(); };
+    U.qs('#project-upload-banner', root).onclick = async () => {
+      try {
+        const banner = await window.comrade.dialog.projectBanner();
+        if (banner) { project.banner = banner; drawArtwork(); }
+      } catch (error) {
+        window.TOAST(error.message, 'error');
+      }
+    };
+    U.qs('#project-remove-banner', root).onclick = () => { project.banner = ''; drawArtwork(); };
+    U.qs('#project-add-files', root).onclick = async () => {
+      try {
+        const selected = await window.comrade.projects.pickFiles();
+        if (!selected.length) return;
+        const files = selected.filter((file) => !project.files.some((existing) => existing.id === file.id));
+        if (project.files.length + files.length > 10) {
+          setFileStatus(window.I18n.t('Project file limit reached'), true);
+          return;
+        }
+        const contextLength = U.qs('#project-context', root).value.length
+          + project.files.reduce((sum, file) => sum + (file.text || '').length, 0)
+          + files.reduce((sum, file) => sum + (file.text || '').length, 0);
+        if (contextLength > 60000) {
+          setFileStatus(window.I18n.t('Project context is limited to 60000 characters.'), true);
+          return;
+        }
+        project.files.push(...files);
+        setFileStatus('');
+        drawFiles();
+      } catch (error) {
+        setFileStatus(error.message, true);
+      }
+    };
+    if (editing) {
+      U.qs('#project-delete', root).onclick = () => {
+        if (!confirm(`Delete project "${editing.name}"? Chats will remain in All chats.`)) return;
+        S.deleteProject(editing.id);
+        V.closeModal();
+        window.TOAST('Project deleted');
+        window.App.refresh();
+      };
+    }
+    U.qs('#project-save', root).onclick = () => {
+      project.name = U.qs('#project-name', root).value.trim();
+      project.context = U.qs('#project-context', root).value;
+      project.systemPrompt = U.qs('#project-prompt', root).value;
+      const contextLength = project.context.length + project.files.reduce((sum, file) => sum + (file.text || '').length, 0);
+      if (!project.name) return window.TOAST('Give the project a name', 'error');
+      if (project.systemPrompt.length > 20000) return window.TOAST('Project instructions are limited to 20000 characters.', 'error');
+      if (contextLength > 60000) return window.TOAST('Project context is limited to 60000 characters.', 'error');
+      const isNew = !editing;
+      S.set((data) => {
+        const index = data.projects.findIndex((entry) => entry.id === project.id);
+        if (index >= 0) data.projects[index] = project;
+        else data.projects.push(project);
+      });
+      V.closeModal();
+      window.TOAST(isNew ? 'Project created' : 'Project saved');
+      window.App.refresh();
+    };
+  };
+
+  V.openProjectWorkspace = (projectId) => {
+    const project = S.project(projectId);
+    if (!project) return;
+    const banner = /^data:image\/(png|jpeg|webp|gif);base64,[a-zA-Z0-9+/=]+$/.test(project.banner || '')
+      ? `<img class="project-workspace-banner" src="${U.esc(project.banner)}" alt="" />`
+      : '';
+    const chats = S.projectChats(projectId);
+    const body = `
+      ${banner}
+      <div class="project-workspace-title">${V.projectIconHTML(project, 'md')}<h4>${U.esc(project.name)}</h4></div>
+      <p class="muted">${window.I18n.t('Choose a chat or create a new one')}</p>
+      <div class="project-workspace-chats" id="project-workspace-chats">${chats.length
+        ? chats.map((chat) => {
+            const agent = S.agent(chat.agentId);
+            return `<button class="project-chat-choice" data-project-chat="${U.esc(chat.id)}">
+              ${V.avatarHTML(agent, 'sm')}<span><b>${U.esc(chat.title || 'New chat')}</b><small>${U.esc(agent?.name || 'Unknown agent')}</small></span>
+            </button>`;
+          }).join('')
+        : `<div class="empty-note">${window.I18n.t('No chats in this project yet.')}</div>`}
+      </div>`;
+    const root = V.modal(project.name, body, {
+      wide: true,
+      footHTML: `<button class="btn ghost" id="project-workspace-edit" type="button">Edit project</button>
+        <div class="spacer"></div><button class="btn ghost" data-modal-close>Close</button>
+        <button class="btn primary" id="project-new-chat" type="button">Create new chat</button>`
+    });
+    U.qs('#project-workspace-edit', root).onclick = () => V.openProjectEditor(projectId);
+    U.qs('#project-new-chat', root).onclick = () => V.openProjectAgentPicker(projectId);
+    U.qsa('[data-project-chat]', root).forEach((button) => {
+      button.onclick = () => {
+        V.closeModal();
+        S.openChat(button.dataset.projectChat);
+      };
+    });
+  };
+
+  V.openProjectAgentPicker = (projectId) => {
+    const project = S.project(projectId);
+    if (!project) return;
+    const body = S.data.agents.length
+      ? `<p class="muted">${window.I18n.t('Choose an agent for the new chat')}</p><div class="project-agent-list">
+          ${S.data.agents.map((agent) => `<button class="project-agent-choice" data-project-agent="${U.esc(agent.id)}">
+            ${V.avatarHTML(agent, 'md')}<span><b>${U.esc(agent.name)}</b><small>${U.esc(S.modelLabel(agent))}</small></span>
+          </button>`).join('')}
+        </div>`
+      : `<div class="empty-note">${window.I18n.t('No agents available.')}</div>`;
+    const root = V.modal('Create new chat', body, {
+      footHTML: `${S.data.agents.length ? '' : '<button class="btn primary" id="project-create-agent" type="button">Create an agent</button>'}
+        <div class="spacer"></div><button class="btn ghost" data-modal-close>Cancel</button>`
+    });
+    U.qsa('[data-project-agent]', root).forEach((button) => {
+      button.onclick = () => {
+        const chat = S.newChat(button.dataset.projectAgent, { silent: true, projectId });
+        V.closeModal();
+        S.openChat(chat.id);
+      };
+    });
+    U.qs('#project-create-agent', root)?.addEventListener('click', () => {
+      V.closeModal();
+      window.App.openAgentEditor(null);
+    });
   };
 
   /* ================================================================== *

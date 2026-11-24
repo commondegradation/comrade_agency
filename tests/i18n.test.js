@@ -49,6 +49,11 @@ test('pattern-based translations for parameterized strings', () => {
   assert.equal(I18n.t('Connection "gh" saved'), 'Подключение «gh» сохранено');
   assert.equal(I18n.t('Saved report.md'), 'Сохранено: report.md');
   assert.equal(I18n.t('GitHub: 12 tools'), 'GitHub: инструментов — 12');
+  assert.equal(I18n.t('Reminder'), 'Напоминание');
+  assert.equal(
+    I18n.t('Delete every provider, agent, chat, connection and reminder?'),
+    'Удалить всех поставщиков, агентов, чаты, подключения и напоминания?'
+  );
 });
 
 test('every dictionary entry maps to a non-empty string', () => {

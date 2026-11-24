@@ -136,8 +136,28 @@ ${js}
    * @returns {null | {code, lang, label, mime, ext, name, html, blocks, mode}}
    */
   function build(markdown, opts = {}) {
+    const source = String(markdown || '');
     const raw = extractBlocks(markdown).filter((b) => b.lang !== 'diff' && !(b.lang === 'text' && b.code.length < 3));
-    if (!raw.length) return null;
+    if (!raw.length) {
+      const code = source.trim();
+      if (!code) return null;
+      const base = String(opts.name || 'response')
+        .replace(/[\u0000-\u001f\\/:*?"<>|]+/g, '-')
+        .replace(/\.[^.]+$/, '')
+        .trim()
+        .slice(0, 100) || 'response';
+      const kind = U.artifactKind('md', code, `${base}.md`);
+      return {
+        code,
+        lang: 'markdown',
+        label: 'Markdown',
+        mime: kind.mime,
+        ext: kind.ext,
+        name: kind.name,
+        mode: 'markdown',
+        blocks: []
+      };
+    }
     const blocks = raw.map((b) => ({
       ...b,
       kind: isHtmlBlock(b) ? 'html' : b.lang
